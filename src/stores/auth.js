@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { userPreferencesService, syncService, cacheService } from 'src/services'
 
 // Simple hash function for demo purposes - in production, use proper server-side hashing
 const simpleHash = (str) => {
@@ -14,19 +15,57 @@ const simpleHash = (str) => {
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(null)
+  const userPreferences = ref(null)
   const isAuthenticated = computed(() => !!user.value)
   const hasCompletedOnboarding = computed(() => user.value?.onboardingCompleted || false)
 
-  // Load user from localStorage on store creation
-  const savedUser = localStorage.getItem('jarvis_user')
-  if (savedUser) {
+  // Initialize services when store is created
+  const initializeServices = async () => {
     try {
-      user.value = JSON.parse(savedUser)
+      await cacheService.init()
+      await syncService.initialize()
     } catch (error) {
-      console.error('Error parsing saved user data:', error)
-      localStorage.removeItem('jarvis_user')
+      console.error('Error initializing services:', error)
     }
   }
+
+  // Load user from localStorage on store creation
+  const loadUserFromStorage = async () => {
+    const savedUser = localStorage.getItem('jarvis_user')
+    if (savedUser) {
+      try {
+        user.value = JSON.parse(savedUser)
+        
+        // Load user preferences if user is authenticated
+        if (user.value?.id) {
+          await loadUserPreferences()
+        }
+        
+        // Notify sync service of authentication change
+        syncService.onAuthChange(true)
+      } catch (error) {
+        console.error('Error parsing saved user data:', error)
+        localStorage.removeItem('jarvis_user')
+      }
+    }
+  }
+
+  // Load user preferences
+  const loadUserPreferences = async () => {
+    if (!user.value?.id) return
+    
+    try {
+      const result = await userPreferencesService.get(user.value.id)
+      if (result.success) {
+        userPreferences.value = result.data
+      }
+    } catch (error) {
+      console.error('Error loading user preferences:', error)
+    }
+  }
+
+  // Initialize services and load user
+  initializeServices().then(() => loadUserFromStorage())
 
   const login = async (credentials) => {
     // For now, use simple local storage authentication
@@ -42,6 +81,13 @@ export const useAuthStore = defineStore('auth', () => {
       const { passwordHash, ...userWithoutPassword } = existingUser
       user.value = userWithoutPassword
       localStorage.setItem('jarvis_user', JSON.stringify(userWithoutPassword))
+      
+      // Load user preferences
+      await loadUserPreferences()
+      
+      // Notify sync service of authentication change
+      syncService.onAuthChange(true)
+      
       return { success: true }
     } else {
       return { success: false, error: 'Invalid email or password' }
@@ -77,10 +123,16 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = userWithoutPassword
     localStorage.setItem('jarvis_user', JSON.stringify(userWithoutPassword))
     
+    // Create default user preferences
+    await createDefaultPreferences()
+    
+    // Notify sync service of authentication change
+    syncService.onAuthChange(true)
+    
     return { success: true }
   }
 
-  const completeOnboarding = (onboardingData) => {
+  const completeOnboarding = async (onboardingData) => {
     if (user.value) {
       const updatedUser = {
         ...user.value,
@@ -98,21 +150,101 @@ export const useAuthStore = defineStore('auth', () => {
         existingUsers[userIndex] = { ...existingUsers[userIndex], ...onboardingData, onboardingCompleted: true }
         localStorage.setItem('jarvis_users', JSON.stringify(existingUsers))
       }
+      
+      // Update user preferences with onboarding data
+      if (userPreferences.value) {
+        const preferencesUpdate = {
+          workPreferences: {
+            workingHours: onboardingData.workingHours,
+            workingDays: onboardingData.workingDays,
+            businessType: onboardingData.businessType
+          },
+          notifications: {
+            ...userPreferences.value.notifications,
+            email: onboardingData.communicationPreference === 'Email',
+            sms: onboardingData.communicationPreference === 'SMS',
+            push: onboardingData.communicationPreference === 'Push notifications',
+            inApp: onboardingData.communicationPreference === 'In-app notifications'
+          }
+        }
+        
+        await userPreferencesService.update(preferencesUpdate, user.value.id)
+        await loadUserPreferences() // Reload preferences
+      }
     }
   }
 
   const logout = () => {
     user.value = null
+    userPreferences.value = null
     localStorage.removeItem('jarvis_user')
+    
+    // Notify sync service of authentication change
+    syncService.onAuthChange(false)
+  }
+
+  // Create default user preferences
+  const createDefaultPreferences = async () => {
+    if (!user.value?.id) return
+    
+    try {
+      const result = await userPreferencesService.createDefault(user.value.id)
+      if (result.success) {
+        userPreferences.value = result.data
+      }
+    } catch (error) {
+      console.error('Error creating default preferences:', error)
+    }
+  }
+
+  // Update user preferences
+  const updatePreferences = async (updates) => {
+    if (!user.value?.id) return { success: false, error: 'User not authenticated' }
+    
+    try {
+      const result = await userPreferencesService.update(updates, user.value.id)
+      if (result.success) {
+        userPreferences.value = result.data
+      }
+      return result
+    } catch (error) {
+      console.error('Error updating preferences:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  // Get sync status
+  const getSyncStatus = async () => {
+    try {
+      return await syncService.getSyncStatus()
+    } catch (error) {
+      console.error('Error getting sync status:', error)
+      return null
+    }
+  }
+
+  // Trigger manual sync
+  const triggerSync = async () => {
+    try {
+      return await syncService.syncAll()
+    } catch (error) {
+      console.error('Error triggering sync:', error)
+      return { success: false, error: error.message }
+    }
   }
 
   return {
     user,
+    userPreferences,
     isAuthenticated,
     hasCompletedOnboarding,
     login,
     register,
     completeOnboarding,
-    logout
+    logout,
+    loadUserPreferences,
+    updatePreferences,
+    getSyncStatus,
+    triggerSync
   }
 })

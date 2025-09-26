@@ -2,7 +2,7 @@
  * Event Service
  * Handles CRUD operations for events with PocketBase backend and local caching
  */
-import { Event } from '@/models'
+import { Event } from 'src/models'
 import { pocketbaseService } from './pocketbase.js'
 import { cacheService } from './cache.js'
 

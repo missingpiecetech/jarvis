@@ -2,7 +2,7 @@
  * Document Service
  * Handles CRUD operations for documents with PocketBase backend and local caching
  */
-import { Document } from '@/models'
+import { Document } from 'src/models'
 import { pocketbaseService } from './pocketbase.js'
 import { cacheService } from './cache.js'
 

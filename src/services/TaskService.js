@@ -2,7 +2,7 @@
  * Task Service
  * Handles CRUD operations for tasks with PocketBase backend and local caching
  */
-import { Task } from '@/models'
+import { Task } from 'src/models'
 import { pocketbaseService } from './pocketbase.js'
 import { cacheService } from './cache.js'
 

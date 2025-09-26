@@ -22,6 +22,11 @@ const routes = [
         path: '', 
         component: () => import('pages/DashboardPage.vue'),
         meta: { requiresAuth: true, requiresOnboarding: true }
+      },
+      { 
+        path: '/tasks', 
+        component: () => import('pages/TasksPage.vue'),
+        meta: { requiresAuth: true, requiresOnboarding: true }
       }
     ]
   },

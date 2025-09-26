@@ -2,7 +2,7 @@
  * User Preferences Service
  * Handles CRUD operations for user preferences with PocketBase backend and local caching
  */
-import { UserPreferences } from '@/models'
+import { UserPreferences } from 'src/models'
 import { pocketbaseService } from './pocketbase.js'
 import { cacheService } from './cache.js'
 

@@ -2,7 +2,7 @@
  * Conversation Service
  * Handles CRUD operations for conversation logs with PocketBase backend and local caching
  */
-import { ConversationLog, Message } from '@/models'
+import { ConversationLog, Message } from 'src/models'
 import { pocketbaseService } from './pocketbase.js'
 import { cacheService } from './cache.js'
 
