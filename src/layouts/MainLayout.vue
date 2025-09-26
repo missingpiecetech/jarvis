@@ -64,7 +64,7 @@
             </q-item-section>
           </q-item>
 
-          <q-item clickable v-ripple to="/tasks">
+          <q-item clickable v-ripple @click="$router.push('/tasks')">
             <q-item-section avatar>
               <q-icon name="task_alt" />
             </q-item-section>
