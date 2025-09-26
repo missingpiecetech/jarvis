@@ -46,12 +46,13 @@
               :class="{
                 'message-user': message.role === 'user',
                 'message-assistant': message.role === 'assistant',
-                'message-error': message.isError
+                'message-error': message.isError,
+                'message-command': message.isCommand
               }"
             >
               <div class="message-avatar">
                 <q-avatar size="32px" :color="message.role === 'user' ? 'accent' : 'primary'">
-                  <q-icon :name="message.role === 'user' ? 'person' : 'smart_toy'" />
+                  <q-icon :name="getMessageIcon(message)" />
                 </q-avatar>
               </div>
               <div class="message-content">
@@ -59,6 +60,7 @@
                 <div class="message-meta text-caption text-grey-6">
                   {{ formatTime(message.timestamp) }}
                   <span v-if="message.model" class="q-ml-sm">• {{ message.model }}</span>
+                  <span v-if="message.isCommand" class="q-ml-sm">• Command</span>
                 </div>
               </div>
             </div>
@@ -158,7 +160,7 @@
 <script setup>
 import { ref, onMounted, nextTick, computed, watch } from 'vue'
 import { useQuasar } from 'quasar'
-import { conversationService, aiService } from 'src/services'
+import { conversationService, aiService, chatCommandService } from 'src/services'
 import { Message } from 'src/models'
 import { useAuthStore } from 'src/stores/auth'
 
@@ -268,29 +270,70 @@ async function sendMessage() {
   isTyping.value = true
   
   try {
-    // Get conversation context with user context
-    const contextMessages = await aiService.getConversationContext(
-      messages.value, 
-      10, 
-      authStore.user?.id
+    // First, check if this is a task/event command
+    const commandResult = await chatCommandService.processMessage(
+      userMessage, 
+      authStore.user?.id, 
+      currentConversationId.value
     )
     
-    // Send to AI with context extraction enabled
-    const aiResponse = await aiService.sendMessage(contextMessages, {
-      model: selectedModel.value,
-      userId: authStore.user?.id,
-      conversationId: currentConversationId.value,
-      extractContext: true
-    })
+    let assistantContent = ''
+    let isError = false
+    
+    if (commandResult && commandResult.isCommand) {
+      // This was a recognized command
+      assistantContent = commandResult.message
+      isError = !commandResult.success
+      
+      if (commandResult.success) {
+        // Add success notification
+        $q.notify({
+          type: 'positive',
+          message: 'Command executed successfully',
+          position: 'top'
+        })
+      }
+    } else {
+      // Not a command, proceed with normal AI processing
+      // Get conversation context with enhanced task/event context
+      let contextMessages = await aiService.getConversationContext(
+        messages.value, 
+        10, 
+        authStore.user?.id
+      )
+      
+      // Add enhanced context about tasks and events
+      const enhancedContext = await chatCommandService.getEnhancedContext(authStore.user?.id)
+      if (enhancedContext && contextMessages.length > 0) {
+        contextMessages[0].content += enhancedContext
+      }
+      
+      // Add enhanced system prompt
+      const enhancedSystemPrompt = chatCommandService.getEnhancedSystemPrompt()
+      if (contextMessages.length > 0) {
+        contextMessages[0].content = enhancedSystemPrompt + '\n\n' + contextMessages[0].content
+      }
+      
+      // Send to AI with context extraction enabled
+      const aiResponse = await aiService.sendMessage(contextMessages, {
+        model: selectedModel.value,
+        userId: authStore.user?.id,
+        conversationId: currentConversationId.value,
+        extractContext: true
+      })
+      
+      assistantContent = aiResponse.content
+      isError = !aiResponse.success
+    }
     
     // Create assistant message
     const assistantMessage = new Message({
       role: 'assistant',
-      content: aiResponse.content,
+      content: assistantContent,
       timestamp: new Date(),
-      isError: !aiResponse.success,
-      model: aiResponse.model,
-      tokens: aiResponse.usage?.totalTokens
+      isError: isError,
+      model: selectedModel.value,
+      isCommand: commandResult?.isCommand || false
     })
     
     messages.value.push(assistantMessage)
@@ -310,10 +353,10 @@ async function sendMessage() {
       }
     }
     
-    if (!aiResponse.success) {
+    if (isError) {
       $q.notify({
         type: 'negative',
-        message: 'AI response failed: ' + aiResponse.error
+        message: commandResult?.isCommand ? 'Command failed' : 'AI response failed'
       })
     }
     
@@ -332,7 +375,7 @@ async function sendMessage() {
     
     $q.notify({
       type: 'negative',
-      message: 'Failed to get AI response'
+      message: 'Failed to process your request'
     })
   } finally {
     isTyping.value = false
@@ -349,8 +392,17 @@ function handleEnterKey(event) {
 }
 
 /**
- * Format message content for display
+ * Get appropriate icon for message
  */
+function getMessageIcon(message) {
+  if (message.role === 'user') {
+    return 'person'
+  } else if (message.isCommand) {
+    return 'terminal'
+  } else {
+    return 'smart_toy'
+  }
+}
 function formatMessageContent(content) {
   // Basic markdown-like formatting
   return content
@@ -470,6 +522,13 @@ function saveSettings() {
     .message-content {
       background: #ffebee;
       border-color: #f44336;
+    }
+  }
+  
+  &.message-command {
+    .message-content {
+      background: #f3e5f5;
+      border-color: #9c27b0;
     }
   }
 }
