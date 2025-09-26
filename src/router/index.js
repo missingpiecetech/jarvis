@@ -1,6 +1,7 @@
 import { defineRouter } from '#q-app/wrappers'
 import { createRouter, createMemoryHistory, createWebHistory, createWebHashHistory } from 'vue-router'
 import routes from './routes'
+import { useAuthStore } from 'src/stores/auth'
 
 /*
  * If not building with SSR mode, you can
@@ -24,6 +25,41 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     // quasar.conf.js -> build -> vueRouterMode
     // quasar.conf.js -> build -> publicPath
     history: createHistory(process.env.VUE_ROUTER_BASE)
+  })
+
+  // Navigation guards for authentication
+  Router.beforeEach((to, from, next) => {
+    const authStore = useAuthStore()
+    
+    // Check if route requires authentication
+    if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+      // Redirect to login if not authenticated
+      next('/login')
+      return
+    }
+    
+    // Check if user is authenticated but trying to access login page
+    if (to.path === '/login' && authStore.isAuthenticated) {
+      // Redirect to dashboard if already authenticated
+      next('/')
+      return
+    }
+    
+    // Check if route requires completed onboarding
+    if (to.meta.requiresOnboarding && authStore.isAuthenticated && !authStore.hasCompletedOnboarding) {
+      // Redirect to onboarding if not completed
+      next('/onboarding')
+      return
+    }
+    
+    // Check if user is trying to access onboarding but already completed it
+    if (to.path === '/onboarding' && authStore.isAuthenticated && authStore.hasCompletedOnboarding) {
+      // Redirect to dashboard if onboarding already completed
+      next('/')
+      return
+    }
+    
+    next()
   })
 
   return Router
