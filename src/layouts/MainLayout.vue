@@ -64,13 +64,12 @@
             </q-item-section>
           </q-item>
 
-          <q-item clickable v-ripple disabled>
+          <q-item clickable v-ripple @click="$router.push('/tasks')">
             <q-item-section avatar>
               <q-icon name="task_alt" />
             </q-item-section>
             <q-item-section>
               <q-item-label>Tasks</q-item-label>
-              <q-item-label caption>Coming Soon</q-item-label>
             </q-item-section>
           </q-item>
 
