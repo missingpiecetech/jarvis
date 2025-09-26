@@ -24,6 +24,11 @@ const routes = [
         meta: { requiresAuth: true, requiresOnboarding: true }
       },
       { 
+        path: 'chat', 
+        component: () => import('pages/ChatPage.vue'),
+        meta: { requiresAuth: true, requiresOnboarding: true }
+      },
+      { 
         path: 'tasks', 
         component: () => import('pages/TaskListPage.vue'),
         meta: { requiresAuth: true, requiresOnboarding: true }

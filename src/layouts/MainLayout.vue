@@ -54,13 +54,13 @@
             </q-item-section>
           </q-item>
 
-          <q-item clickable v-ripple disabled>
+          <q-item clickable v-ripple @click="$router.push('/chat')">
             <q-item-section avatar>
               <q-icon name="chat" />
             </q-item-section>
             <q-item-section>
               <q-item-label>AI Chat</q-item-label>
-              <q-item-label caption>Coming Soon</q-item-label>
+              <q-item-label caption>Chat with your assistant</q-item-label>
             </q-item-section>
           </q-item>
 
