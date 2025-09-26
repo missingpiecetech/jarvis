@@ -160,8 +160,10 @@ import { ref, onMounted, nextTick, computed, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { conversationService, aiService } from 'src/services'
 import { Message } from 'src/models'
+import { useAuthStore } from 'src/stores/auth'
 
 const $q = useQuasar()
+const authStore = useAuthStore()
 
 // Reactive data
 const messages = ref([])
@@ -266,12 +268,19 @@ async function sendMessage() {
   isTyping.value = true
   
   try {
-    // Get conversation context
-    const contextMessages = aiService.getConversationContext(messages.value)
+    // Get conversation context with user context
+    const contextMessages = await aiService.getConversationContext(
+      messages.value, 
+      10, 
+      authStore.user?.id
+    )
     
-    // Send to AI
+    // Send to AI with context extraction enabled
     const aiResponse = await aiService.sendMessage(contextMessages, {
-      model: selectedModel.value
+      model: selectedModel.value,
+      userId: authStore.user?.id,
+      conversationId: currentConversationId.value,
+      extractContext: true
     })
     
     // Create assistant message
