@@ -1,6 +1,11 @@
 <template>
   <q-page class="q-pa-lg">
-    <div v-if="!task" class="text-center q-py-xl">
+    <div v-if="loading" class="text-center q-py-xl">
+      <q-spinner size="48px" color="primary" />
+      <div class="text-body1 text-grey-6 q-mt-md">Loading task...</div>
+    </div>
+    
+    <div v-else-if="!task" class="text-center q-py-xl">
       <q-icon name="error" size="64px" color="grey-4" />
       <div class="text-h6 text-grey-6 q-mt-md">Task not found</div>
       <q-btn 
@@ -187,7 +192,7 @@
                 />
               </div>
 
-              <div v-if="task.subtasks.length === 0" class="text-center q-py-lg">
+              <div v-if="subtasks.length === 0" class="text-center q-py-lg">
                 <q-icon name="checklist" size="48px" color="grey-4" />
                 <div class="text-body1 text-grey-6 q-mt-md">No subtasks yet</div>
                 <div class="text-body2 text-grey-5">Break this task into smaller steps</div>
@@ -195,14 +200,14 @@
 
               <q-list v-else separator>
                 <q-item 
-                  v-for="subtask in task.subtasks" 
+                  v-for="subtask in subtasks" 
                   :key="subtask.id"
                   class="q-pa-md"
                 >
                   <q-item-section avatar>
                     <q-checkbox 
                       :model-value="subtask.status === 'completed'"
-                      @update:model-value="(val) => toggleSubtaskStatus(subtask, val)"
+                      @update:model-value="() => toggleSubtaskStatus(subtask)"
                       color="positive"
                     />
                   </q-item-section>
@@ -253,7 +258,7 @@
                   <q-item-section>
                     <q-item-label caption>Progress</q-item-label>
                     <q-item-label>
-                      {{ completedSubtasks }}/{{ task.subtasks.length }} subtasks completed
+                      {{ completedSubtasks }}/{{ subtasks.length }} subtasks completed
                     </q-item-label>
                     <q-linear-progress 
                       :value="progressPercentage" 
@@ -322,53 +327,85 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuasar, date } from 'quasar'
-import { useTaskStore } from 'src/stores/tasks'
+import { taskService } from 'src/services'
+import { Task } from 'src/models'
 
 const route = useRoute()
 const router = useRouter()
 const $q = useQuasar()
-const taskStore = useTaskStore()
 
 // Reactive data
 const task = ref(null)
+const subtasks = ref([])
 const editing = ref(false)
 const editForm = ref({})
 const showAddSubtask = ref(false)
 const showDeleteConfirm = ref(false)
 const newSubtaskTitle = ref('')
+const loading = ref(false)
 
 // Options
 const priorityOptions = [
+  { label: 'Urgent Priority', value: 'urgent' },
   { label: 'High Priority', value: 'high' },
   { label: 'Medium Priority', value: 'medium' },
   { label: 'Low Priority', value: 'low' }
 ]
 
 const statusOptions = [
-  { label: 'To Do', value: 'todo' },
-  { label: 'In Progress', value: 'in-progress' },
+  { label: 'To Do', value: 'pending' },
+  { label: 'In Progress', value: 'in_progress' },
   { label: 'Completed', value: 'completed' }
 ]
 
 // Computed properties
 const completedSubtasks = computed(() => {
-  return task.value?.subtasks?.filter(subtask => subtask.status === 'completed').length || 0
+  return subtasks.value?.filter(subtask => subtask.status === 'completed').length || 0
 })
 
 const progressPercentage = computed(() => {
-  if (!task.value?.subtasks?.length) return 0
-  return completedSubtasks.value / task.value.subtasks.length
+  if (!subtasks.value?.length) return 0
+  return completedSubtasks.value / subtasks.value.length
 })
 
 // Methods
-const loadTask = () => {
-  const taskId = route.params.id
-  task.value = taskStore.getTaskById(taskId)
+const loadTask = async () => {
+  loading.value = true
+  try {
+    const taskId = route.params.id
+    const taskResult = await taskService.getById(taskId)
+    
+    if (taskResult.success) {
+      task.value = taskResult.data
+      
+      // Load subtasks
+      const subtasksResult = await taskService.getSubtasks(taskId)
+      if (subtasksResult.success) {
+        subtasks.value = subtasksResult.data
+      }
+    } else {
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to load task: ' + taskResult.error
+      })
+    }
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Error loading task: ' + error.message
+    })
+  } finally {
+    loading.value = false
+  }
 }
 
 const startEditing = () => {
   editing.value = true
-  editForm.value = { ...task.value }
+  editForm.value = { 
+    ...task.value,
+    dueDate: task.value.dueDate ? task.value.dueDate.toISOString().slice(0, 16) : '',
+    tags: task.value.tags ? task.value.tags.join(', ') : ''
+  }
 }
 
 const cancelEditing = () => {
@@ -376,15 +413,34 @@ const cancelEditing = () => {
   editForm.value = {}
 }
 
-const saveTask = () => {
-  const updated = taskStore.updateTask(task.value.id, editForm.value)
-  if (updated) {
-    task.value = updated
-    editing.value = false
+const saveTask = async () => {
+  try {
+    const updateData = {
+      ...editForm.value,
+      dueDate: editForm.value.dueDate ? new Date(editForm.value.dueDate) : null,
+      tags: editForm.value.tags ? editForm.value.tags.split(',').map(tag => tag.trim()) : []
+    }
+    
+    const result = await taskService.update(task.value.id, updateData)
+    
+    if (result.success) {
+      task.value = result.data
+      editing.value = false
+      $q.notify({
+        type: 'positive',
+        message: 'Task updated successfully',
+        position: 'top'
+      })
+    } else {
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to update task: ' + result.error
+      })
+    }
+  } catch (error) {
     $q.notify({
-      type: 'positive',
-      message: 'Task updated successfully',
-      position: 'top'
+      type: 'negative',
+      message: 'Error updating task: ' + error.message
     })
   }
 }
@@ -393,50 +449,123 @@ const confirmDelete = () => {
   showDeleteConfirm.value = true
 }
 
-const deleteTask = () => {
-  if (taskStore.deleteTask(task.value.id)) {
+const deleteTask = async () => {
+  try {
+    const result = await taskService.delete(task.value.id)
+    
+    if (result.success) {
+      $q.notify({
+        type: 'positive',
+        message: 'Task deleted successfully',
+        position: 'top'
+      })
+      router.push('/tasks')
+    } else {
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to delete task: ' + result.error
+      })
+    }
+  } catch (error) {
     $q.notify({
-      type: 'positive',
-      message: 'Task deleted successfully',
-      position: 'top'
+      type: 'negative',
+      message: 'Error deleting task: ' + error.message
     })
-    router.push('/tasks')
   }
 }
 
-const addSubtask = () => {
+const addSubtask = async () => {
   if (newSubtaskTitle.value.trim()) {
-    taskStore.addSubtask(task.value.id, { title: newSubtaskTitle.value.trim() })
-    loadTask() // Reload to get updated task
-    newSubtaskTitle.value = ''
-    showAddSubtask.value = false
+    try {
+      const subtaskData = {
+        title: newSubtaskTitle.value.trim(),
+        description: '',
+        priority: task.value.priority,
+        value: 0,
+        status: 'pending',
+        parentTaskId: task.value.id
+      }
+      
+      const result = await taskService.create(subtaskData)
+      
+      if (result.success) {
+        subtasks.value.push(result.data)
+        newSubtaskTitle.value = ''
+        showAddSubtask.value = false
+        $q.notify({
+          type: 'positive',
+          message: 'Subtask added successfully',
+          position: 'top'
+        })
+      } else {
+        $q.notify({
+          type: 'negative',
+          message: 'Failed to add subtask: ' + result.error
+        })
+      }
+    } catch (error) {
+      $q.notify({
+        type: 'negative',
+        message: 'Error adding subtask: ' + error.message
+      })
+    }
+  }
+}
+
+const toggleSubtaskStatus = async (subtask) => {
+  try {
+    const newStatus = subtask.status === 'completed' ? 'pending' : 'completed'
+    const result = await taskService.update(subtask.id, { 
+      status: newStatus,
+      completedAt: newStatus === 'completed' ? new Date() : null
+    })
+    
+    if (result.success) {
+      subtask.status = newStatus
+      subtask.completedAt = result.data.completedAt
+    } else {
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to update subtask: ' + result.error
+      })
+    }
+  } catch (error) {
     $q.notify({
-      type: 'positive',
-      message: 'Subtask added successfully',
-      position: 'top'
+      type: 'negative',
+      message: 'Error updating subtask: ' + error.message
     })
   }
 }
 
-const toggleSubtaskStatus = (subtask, isCompleted) => {
-  const newStatus = isCompleted ? 'completed' : 'todo'
-  taskStore.updateSubtask(task.value.id, subtask.id, { status: newStatus })
-  loadTask() // Reload to get updated task
-}
-
-const deleteSubtask = (subtaskId) => {
-  taskStore.deleteSubtask(task.value.id, subtaskId)
-  loadTask() // Reload to get updated task
-  $q.notify({
-    type: 'positive',
-    message: 'Subtask deleted successfully',
-    position: 'top'
-  })
+const deleteSubtask = async (subtaskId) => {
+  try {
+    const result = await taskService.delete(subtaskId)
+    
+    if (result.success) {
+      subtasks.value = subtasks.value.filter(s => s.id !== subtaskId)
+      $q.notify({
+        type: 'positive',
+        message: 'Subtask deleted successfully',
+        position: 'top'
+      })
+    } else {
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to delete subtask: ' + result.error
+      })
+    }
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Error deleting subtask: ' + error.message
+    })
+  }
 }
 
 // Utility functions
 const getPriorityColor = (priority) => {
   switch (priority) {
+    case 'urgent': return 'deep-orange'
     case 'high': return 'negative'
     case 'medium': return 'warning'
     case 'low': return 'info'
@@ -446,6 +575,7 @@ const getPriorityColor = (priority) => {
 
 const getPriorityIcon = (priority) => {
   switch (priority) {
+    case 'urgent': return 'warning'
     case 'high': return 'priority_high'
     case 'medium': return 'remove'
     case 'low': return 'keyboard_arrow_down'
@@ -460,16 +590,16 @@ const formatPriority = (priority) => {
 const getStatusColor = (status) => {
   switch (status) {
     case 'completed': return 'positive'
-    case 'in-progress': return 'warning'
-    case 'todo': return 'info'
+    case 'in_progress': return 'warning'
+    case 'pending': return 'info'
     default: return 'grey'
   }
 }
 
 const formatStatus = (status) => {
   switch (status) {
-    case 'in-progress': return 'In Progress'
-    case 'todo': return 'To Do'
+    case 'in_progress': return 'In Progress'
+    case 'pending': return 'To Do'
     case 'completed': return 'Completed'
     default: return status
   }

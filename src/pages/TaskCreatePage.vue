@@ -205,11 +205,11 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
-import { useTaskStore } from 'src/stores/tasks'
+import { taskService } from 'src/services'
+import { Task } from 'src/models'
 
 const router = useRouter()
 const $q = useQuasar()
-const taskStore = useTaskStore()
 
 // Reactive data
 const creating = ref(false)
@@ -219,11 +219,13 @@ const form = ref({
   priority: 'medium',
   value: 50,
   dueDate: '',
+  tags: [],
   subtasks: []
 })
 
 // Options
 const priorityOptions = [
+  { label: 'Urgent Priority', value: 'urgent' },
   { label: 'High Priority', value: 'high' },
   { label: 'Medium Priority', value: 'medium' },
   { label: 'Low Priority', value: 'low' }
@@ -233,7 +235,7 @@ const priorityOptions = [
 const addSubtask = () => {
   form.value.subtasks.push({
     title: '',
-    status: 'todo'
+    status: 'pending'
   })
 }
 
@@ -250,10 +252,32 @@ const createTask = async () => {
     
     const taskData = {
       ...form.value,
-      subtasks: validSubtasks
+      dueDate: form.value.dueDate ? new Date(form.value.dueDate) : null,
+      tags: Array.isArray(form.value.tags) ? form.value.tags : []
     }
     
-    const newTask = taskStore.addTask(taskData)
+    // Create main task first
+    const taskResult = await taskService.create(taskData)
+    
+    if (!taskResult.success) {
+      throw new Error(taskResult.error)
+    }
+    
+    const newTask = taskResult.data
+    
+    // Create subtasks if any
+    for (const subtask of validSubtasks) {
+      const subtaskData = {
+        title: subtask.title,
+        description: '',
+        priority: form.value.priority,
+        value: 0,
+        status: 'pending',
+        parentTaskId: newTask.id
+      }
+      
+      await taskService.create(subtaskData)
+    }
     
     $q.notify({
       type: 'positive',
@@ -266,7 +290,7 @@ const createTask = async () => {
   } catch (error) {
     $q.notify({
       type: 'negative',
-      message: 'Failed to create task. Please try again.',
+      message: 'Failed to create task: ' + error.message,
       position: 'top'
     })
   } finally {
@@ -277,6 +301,7 @@ const createTask = async () => {
 // Utility functions
 const getPriorityColor = (priority) => {
   switch (priority) {
+    case 'urgent': return 'deep-orange'
     case 'high': return 'negative'
     case 'medium': return 'warning'
     case 'low': return 'info'
@@ -286,6 +311,7 @@ const getPriorityColor = (priority) => {
 
 const getPriorityIcon = (priority) => {
   switch (priority) {
+    case 'urgent': return 'warning'
     case 'high': return 'priority_high'
     case 'medium': return 'remove'
     case 'low': return 'keyboard_arrow_down'

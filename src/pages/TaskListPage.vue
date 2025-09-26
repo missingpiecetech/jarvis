@@ -32,7 +32,7 @@
           align="left"
         >
           <q-tab name="all" label="All Tasks" :badge="tasks?.length || 0" />
-          <q-tab name="todo" label="To Do" :badge="todoTasks?.length || 0" />
+          <q-tab name="pending" label="To Do" :badge="todoTasks?.length || 0" />
           <q-tab name="in-progress" label="In Progress" :badge="inProgressTasks?.length || 0" />
           <q-tab name="completed" label="Completed" :badge="completedTasks?.length || 0" />
         </q-tabs>
@@ -145,14 +145,14 @@
           </q-tab-panel>
 
           <!-- To Do Tasks -->
-          <q-tab-panel name="todo">
-            <div v-if="filteredTasks.filter(t => t.status === 'todo').length === 0" class="text-center q-py-xl">
+          <q-tab-panel name="pending">
+            <div v-if="filteredTasks.filter(t => t.status === 'pending').length === 0" class="text-center q-py-xl">
               <q-icon name="assignment" size="64px" color="grey-4" />
               <div class="text-h6 text-grey-6 q-mt-md">No to-do tasks</div>
             </div>
             <div v-else class="row q-gutter-md">
               <div 
-                v-for="task in filteredTasks.filter(t => t.status === 'todo')" 
+                v-for="task in filteredTasks.filter(t => t.status === 'pending')" 
                 :key="task.id" 
                 class="col-12 col-md-6 col-lg-4"
               >
@@ -210,23 +210,28 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { useTaskStore } from 'src/stores/tasks'
+import { ref, computed, onMounted } from 'vue'
+import { useQuasar } from 'quasar'
+import { taskService } from 'src/services'
+import { Task } from 'src/models'
 import TaskCard from 'src/components/TaskCard.vue'
 
-const taskStore = useTaskStore()
+const $q = useQuasar()
 
 // Reactive data
 const activeTab = ref('all')
 const searchQuery = ref('')
 const priorityFilter = ref(null)
 const sortBy = ref('dueDate')
+const tasks = ref([])
+const loading = ref(false)
 
 // Filter and sort options
 const priorityOptions = [
   { label: 'High Priority', value: 'high' },
   { label: 'Medium Priority', value: 'medium' },
-  { label: 'Low Priority', value: 'low' }
+  { label: 'Low Priority', value: 'low' },
+  { label: 'Urgent Priority', value: 'urgent' }
 ]
 
 const sortOptions = [
@@ -237,12 +242,22 @@ const sortOptions = [
   { label: 'Updated Date', value: 'updatedAt' }
 ]
 
-// Computed properties from store
-const tasks = computed(() => taskStore.tasks)
-const todoTasks = computed(() => taskStore.todoTasks)
-const inProgressTasks = computed(() => taskStore.inProgressTasks)
-const completedTasks = computed(() => taskStore.completedTasks)
-const highPriorityTasks = computed(() => taskStore.highPriorityTasks)
+// Computed properties
+const todoTasks = computed(() => {
+  return tasks.value.filter(task => task.status === 'pending')
+})
+
+const inProgressTasks = computed(() => {
+  return tasks.value.filter(task => task.status === 'in_progress')
+})
+
+const completedTasks = computed(() => {
+  return tasks.value.filter(task => task.status === 'completed')
+})
+
+const highPriorityTasks = computed(() => {
+  return tasks.value.filter(task => task.priority === 'high' || task.priority === 'urgent')
+})
 
 const filteredTasks = computed(() => {
   let filtered = [...(tasks.value || [])]
@@ -271,7 +286,7 @@ const filteredTasks = computed(() => {
         return new Date(a.dueDate) - new Date(b.dueDate)
       
       case 'priority':
-        const priorityOrder = { high: 3, medium: 2, low: 1 }
+        const priorityOrder = { urgent: 4, high: 3, medium: 2, low: 1 }
         return priorityOrder[b.priority] - priorityOrder[a.priority]
       
       case 'value':
@@ -289,5 +304,33 @@ const filteredTasks = computed(() => {
   })
 
   return filtered
+})
+
+// Methods
+const loadTasks = async () => {
+  loading.value = true
+  try {
+    const result = await taskService.getAll()
+    if (result.success) {
+      tasks.value = result.data
+    } else {
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to load tasks: ' + result.error
+      })
+    }
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Error loading tasks: ' + error.message
+    })
+  } finally {
+    loading.value = false
+  }
+}
+
+// Lifecycle
+onMounted(() => {
+  loadTasks()
 })
 </script>

@@ -2,6 +2,7 @@
   <q-card 
     class="task-card cursor-pointer q-hoverable"
     :class="{
+      'border-left-urgent': task.priority === 'urgent',
       'border-left-high': task.priority === 'high',
       'border-left-medium': task.priority === 'medium', 
       'border-left-low': task.priority === 'low'
@@ -84,16 +85,16 @@ const completedSubtasks = computed(() => {
 const getStatusColor = (status) => {
   switch (status) {
     case 'completed': return 'positive'
-    case 'in-progress': return 'warning'
-    case 'todo': return 'info'
+    case 'in_progress': return 'warning'
+    case 'pending': return 'info'
     default: return 'grey'
   }
 }
 
 const formatStatus = (status) => {
   switch (status) {
-    case 'in-progress': return 'In Progress'
-    case 'todo': return 'To Do'
+    case 'in_progress': return 'In Progress'
+    case 'pending': return 'To Do'
     case 'completed': return 'Completed'
     default: return status
   }
@@ -101,6 +102,7 @@ const formatStatus = (status) => {
 
 const getPriorityColor = (priority) => {
   switch (priority) {
+    case 'urgent': return 'deep-orange'
     case 'high': return 'negative'
     case 'medium': return 'warning'
     case 'low': return 'info'
@@ -110,6 +112,7 @@ const getPriorityColor = (priority) => {
 
 const getPriorityIcon = (priority) => {
   switch (priority) {
+    case 'urgent': return 'warning'
     case 'high': return 'priority_high'
     case 'medium': return 'remove'
     case 'low': return 'keyboard_arrow_down'
@@ -144,6 +147,10 @@ const getDueDateClass = (dueDate) => {
 .task-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.border-left-urgent {
+  border-left: 4px solid #ff5722;
 }
 
 .border-left-high {
