@@ -47,7 +47,8 @@
                 'message-user': message.role === 'user',
                 'message-assistant': message.role === 'assistant',
                 'message-error': message.isError,
-                'message-command': message.isCommand
+                'message-command': message.isCommand,
+                'message-welcome': message.isWelcome
               }"
             >
               <div class="message-avatar">
@@ -211,8 +212,13 @@ async function loadActiveConversation() {
       currentConversationId.value = activeConversation.data.id
       conversationTitle.value = activeConversation.data.title
       messages.value = activeConversation.data.messages.map(msg => new Message(msg))
+      
+      // If conversation exists but has no messages, add welcome message
+      if (messages.value.length === 0) {
+        await addWelcomeMessage()
+      }
     } else {
-      // Start new conversation
+      // Start new conversation with welcome message
       await startNewConversation()
     }
   } catch (error) {
@@ -232,6 +238,9 @@ async function startNewConversation() {
       currentConversationId.value = result.data.id
       conversationTitle.value = result.data.title || 'New Conversation'
       messages.value = []
+      
+      // Add welcome message when starting a new conversation
+      await addWelcomeMessage()
     } else {
       $q.notify({
         type: 'negative',
@@ -240,6 +249,33 @@ async function startNewConversation() {
     }
   } catch (error) {
     console.error('Error starting new conversation:', error)
+  }
+}
+
+/**
+ * Add welcome message to new conversations
+ */
+async function addWelcomeMessage() {
+  const welcomeMessage = new Message({
+    role: 'assistant',
+    content: `👋 Welcome to Jarvis, ${authStore.user?.name || 'there'}! I'm your personal AI assistant.
+
+I can help you with:
+• **Task Management**: "Create a task to call John tomorrow" or "List my high priority tasks"
+• **Event Scheduling**: "Schedule a meeting with the team at 3pm Friday"
+• **Multiple Tasks**: "I need to buy groceries, call mom, and finish the report by Friday"
+• **General Questions**: Ask me anything you need help with!
+
+What would you like to do today?`,
+    timestamp: new Date(),
+    isWelcome: true
+  })
+  
+  messages.value.push(welcomeMessage)
+  
+  // Save welcome message to conversation
+  if (currentConversationId.value) {
+    await conversationService.addMessage(currentConversationId.value, welcomeMessage)
   }
 }
 
@@ -397,6 +433,8 @@ function handleEnterKey(event) {
 function getMessageIcon(message) {
   if (message.role === 'user') {
     return 'person'
+  } else if (message.isWelcome) {
+    return 'waving_hand'
   } else if (message.isCommand) {
     return 'terminal'
   } else {
@@ -529,6 +567,13 @@ function saveSettings() {
     .message-content {
       background: #f3e5f5;
       border-color: #9c27b0;
+    }
+  }
+  
+  &.message-welcome {
+    .message-content {
+      background: #e8f5e8;
+      border-color: #4caf50;
     }
   }
 }

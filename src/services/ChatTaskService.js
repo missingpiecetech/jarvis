@@ -12,6 +12,7 @@ class ChatTaskService {
 
   /**
    * Parse a user message for task-related intents and entities
+   * Enhanced to detect multiple tasks in a single message
    */
   parseTaskIntent(message) {
     const lowerMessage = message.toLowerCase()
@@ -56,10 +57,23 @@ class ChatTaskService {
       /(?:what\s+(?:tasks|todos)\s+are\s+(?:urgent|high\s+priority|important))/i
     ]
 
+    // Check for multiple task creation patterns
+    const multipleTaskPatterns = [
+      /(?:i\s+need\s+to|i\s+have\s+to|remind\s+me\s+to|don't\s+forget\s+to)/gi,
+      /(?:also|and\s+then|then|next|after\s+that)/gi,
+      /(?:\d+\.\s+|\d+\)\s+|[-•]\s+)/g // numbered or bulleted lists
+    ]
+
     // Determine intent
     let intent = 'unknown'
+    let isMultipleTaskIntent = false
+    
     if (createPatterns.some(pattern => pattern.test(lowerMessage))) {
       intent = 'create_task'
+      // Check if this looks like multiple tasks
+      isMultipleTaskIntent = multipleTaskPatterns.some(pattern => 
+        (lowerMessage.match(pattern) || []).length > 1
+      )
     } else if (editPatterns.some(pattern => pattern.test(lowerMessage))) {
       intent = 'edit_task'
     } else if (deletePatterns.some(pattern => pattern.test(lowerMessage))) {
@@ -74,14 +88,83 @@ class ChatTaskService {
       intent = 'query_priority_tasks'
     }
 
-    // Extract entities
-    const entities = this.extractTaskEntities(message)
+    // Extract entities (single or multiple)
+    const entities = isMultipleTaskIntent ? 
+      this.extractMultipleTaskEntities(message) : 
+      this.extractTaskEntities(message)
 
     return {
       intent,
       entities,
+      isMultiple: isMultipleTaskIntent,
       confidence: this.calculateConfidence(intent, entities, message)
     }
+  }
+
+  /**
+   * Extract multiple task entities from message
+   */
+  extractMultipleTaskEntities(message) {
+    // Split message into potential task segments
+    const segments = this.splitIntoTaskSegments(message)
+    const tasks = []
+    
+    for (const segment of segments) {
+      const taskEntity = this.extractTaskEntities(segment)
+      if (taskEntity.title && taskEntity.title.trim()) {
+        tasks.push(taskEntity)
+      }
+    }
+    
+    // If no multiple tasks found, fall back to single task extraction
+    if (tasks.length === 0) {
+      const singleTask = this.extractTaskEntities(message)
+      return singleTask.title ? [singleTask] : []
+    }
+    
+    return tasks
+  }
+
+  /**
+   * Split message into individual task segments
+   */
+  splitIntoTaskSegments(message) {
+    // Remove task creation prefixes for cleaner splitting
+    let cleanMessage = message
+      .replace(/(?:create|add|make|new)\s+(?:a\s+)?task(?:s)?\s+(?:to\s+|for\s+)?/gi, '')
+      .replace(/(?:i\s+need\s+to|i\s+have\s+to|i\s+should|remind\s+me\s+to|don't\s+forget\s+to)\s+/gi, '')
+    
+    // Split by common delimiters for multiple tasks
+    const delimiters = [
+      /\s+and\s+(?:also\s+)?(?:i\s+need\s+to|i\s+have\s+to|i\s+should|remind\s+me\s+to|don't\s+forget\s+to)\s+/gi,
+      /\s+(?:also|then|next|after\s+that)\s+(?:i\s+need\s+to|i\s+have\s+to|i\s+should|remind\s+me\s+to|don't\s+forget\s+to)\s+/gi,
+      /\s+(?:and|also|then|next|after\s+that)\s+/gi,
+      /\s*[,;]\s*(?:and\s+)?/gi,
+      /\s*\d+\.\s+/g, // numbered lists
+      /\s*\d+\)\s+/g, // numbered lists with parentheses
+      /\s*[-•]\s+/g   // bulleted lists
+    ]
+    
+    let segments = [cleanMessage]
+    
+    // Apply each delimiter to split further
+    for (const delimiter of delimiters) {
+      const newSegments = []
+      for (const segment of segments) {
+        const split = segment.split(delimiter).filter(s => s.trim())
+        newSegments.push(...split)
+      }
+      if (newSegments.length > segments.length) {
+        segments = newSegments
+        break // Found a good split, use it
+      }
+    }
+    
+    // Clean up segments
+    return segments
+      .map(s => s.trim())
+      .filter(s => s.length > 2) // Filter out very short segments
+      .slice(0, 10) // Limit to reasonable number of tasks
   }
 
   /**
@@ -160,9 +243,65 @@ class ChatTaskService {
   }
 
   /**
-   * Process task creation from chat
+   * Process task creation from chat (single or multiple tasks)
    */
   async processTaskCreation(entities, userId) {
+    try {
+      // Handle multiple tasks
+      if (Array.isArray(entities)) {
+        const results = []
+        const successTasks = []
+        const failedTasks = []
+        
+        for (const taskEntity of entities) {
+          const result = await this.createSingleTask(taskEntity, userId)
+          results.push(result)
+          
+          if (result.success) {
+            successTasks.push(result.task)
+          } else {
+            failedTasks.push({ entity: taskEntity, error: result.message })
+          }
+        }
+        
+        // Generate summary message
+        let message = ''
+        if (successTasks.length > 0) {
+          message += `✅ Created ${successTasks.length} task${successTasks.length > 1 ? 's' : ''}:\n`
+          successTasks.forEach(task => {
+            message += `• **${task.title}**${task.dueDate ? ` (due ${this.formatDate(task.dueDate)})` : ''}\n`
+          })
+        }
+        
+        if (failedTasks.length > 0) {
+          message += `\n❌ Failed to create ${failedTasks.length} task${failedTasks.length > 1 ? 's' : ''}:\n`
+          failedTasks.forEach(failed => {
+            message += `• ${failed.entity.title || 'Unknown task'}: ${failed.error}\n`
+          })
+        }
+        
+        return {
+          success: successTasks.length > 0,
+          tasks: successTasks,
+          message: message.trim(),
+          isMultiple: true
+        }
+      } else {
+        // Handle single task
+        return await this.createSingleTask(entities, userId)
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: `❌ Error creating task(s): ${error.message}`
+      }
+    }
+  }
+
+  /**
+   * Create a single task
+   */
+  async createSingleTask(entities, userId) {
     try {
       // Prepare task data
       const taskData = {

@@ -28,8 +28,11 @@ export default defineRouter(function (/* { store, ssrContext } */) {
   })
 
   // Navigation guards for authentication
-  Router.beforeEach((to, from, next) => {
+  Router.beforeEach(async (to, from, next) => {
     const authStore = useAuthStore()
+    
+    // Wait for auth store to initialize
+    await authStore.initialize()
     
     // Check if route requires authentication
     if (to.meta.requiresAuth && !authStore.isAuthenticated) {
@@ -40,7 +43,7 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     
     // Check if user is authenticated but trying to access login page
     if (to.path === '/login' && authStore.isAuthenticated) {
-      // Redirect to dashboard if already authenticated
+      // Redirect to chat if already authenticated
       next('/')
       return
     }
@@ -54,7 +57,7 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     
     // Check if user is trying to access onboarding but already completed it
     if (to.path === '/onboarding' && authStore.isAuthenticated && authStore.hasCompletedOnboarding) {
-      // Redirect to dashboard if onboarding already completed
+      // Redirect to chat if onboarding already completed
       next('/')
       return
     }

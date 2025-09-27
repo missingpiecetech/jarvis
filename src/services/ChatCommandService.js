@@ -64,18 +64,31 @@ class ChatCommandService {
    * Process task-related commands
    */
   async processTaskCommand(taskIntent, message, userId) {
-    const { intent, entities } = taskIntent
+    const { intent, entities, isMultiple } = taskIntent
     
     switch (intent) {
       case 'create_task':
-        if (!entities.title) {
-          return {
-            success: false,
-            message: '❓ What task would you like me to create? Please provide a task title.',
-            needsClarification: true
+        if (isMultiple && Array.isArray(entities)) {
+          // Handle multiple tasks
+          if (entities.length === 0) {
+            return {
+              success: false,
+              message: '❓ I couldn\'t identify any specific tasks to create. Please provide task titles.',
+              needsClarification: true
+            }
           }
+          return await this.chatTaskService.processTaskCreation(entities, userId)
+        } else {
+          // Handle single task
+          if (!entities.title) {
+            return {
+              success: false,
+              message: '❓ What task would you like me to create? Please provide a task title.',
+              needsClarification: true
+            }
+          }
+          return await this.chatTaskService.processTaskCreation(entities, userId)
         }
-        return await this.chatTaskService.processTaskCreation(entities, userId)
         
       case 'complete_task':
         if (!entities.title) {
