@@ -4,20 +4,20 @@
  * Primary implementation uses Gemini Flash, but designed for easy switching
  * Enhanced with context extraction and task/event suggestion capabilities
  */
-import { userContextService } from './UserContextService.js'
+import { userContextService } from "./UserContextService.js";
 
 class AIService {
   constructor() {
-    this.currentProvider = 'gemini'
+    this.currentProvider = "gemini";
     this.models = {
       gemini: {
-        flash: 'gemini-1.5-flash',
-        pro: 'gemini-1.5-pro'
-      }
-    }
-    this.defaultModel = this.models.gemini.flash
-    this.apiKey = import.meta.env.VITE_GEMINI_API_KEY
-    this.baseURL = 'https://generativelanguage.googleapis.com/v1beta/models'
+        flash: "gemini-2.0-flash-lite",
+        pro: "gemini-2.5-pro",
+      },
+    };
+    this.defaultModel = this.models.gemini.flash;
+    this.apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    this.baseURL = "https://generativelanguage.googleapis.com/v1beta/models";
   }
 
   /**
@@ -25,35 +25,47 @@ class AIService {
    */
   async sendMessage(messages, options = {}) {
     try {
-      const model = options.model || this.defaultModel
-      const temperature = options.temperature || 0.7
-      const maxTokens = options.maxTokens || 2048
-      const extractContext = options.extractContext !== false // Default to true
-      const userId = options.userId
-      const conversationId = options.conversationId
+      const model = options.model || this.defaultModel;
+      const temperature = options.temperature || 0.7;
+      const maxTokens = options.maxTokens || 2048;
+      const extractContext = options.extractContext !== false; // Default to true
+      const userId = options.userId;
+      const conversationId = options.conversationId;
 
       switch (this.currentProvider) {
-        case 'gemini':
-          const response = await this.sendToGemini(messages, model, temperature, maxTokens)
-          
+        case "gemini":
+          const response = await this.sendToGemini(
+            messages,
+            model,
+            temperature,
+            maxTokens
+          );
+
           // Extract context and suggestions if successful and enabled
           if (response.success && extractContext && userId) {
             // Run context extraction in background (don't wait for it)
-            this.extractAndStoreContext(messages, response.content, userId, conversationId)
-              .catch(error => console.error('Context extraction error:', error))
+            this.extractAndStoreContext(
+              messages,
+              response.content,
+              userId,
+              conversationId
+            ).catch((error) =>
+              console.error("Context extraction error:", error)
+            );
           }
-          
-          return response
+
+          return response;
         default:
-          throw new Error(`Unsupported AI provider: ${this.currentProvider}`)
+          throw new Error(`Unsupported AI provider: ${this.currentProvider}`);
       }
     } catch (error) {
-      console.error('AI Service Error:', error)
+      console.error("AI Service Error:", error);
       return {
         success: false,
         error: error.message,
-        content: 'I apologize, but I encountered an issue processing your request. Please try again.'
-      }
+        content:
+          "I apologize, but I encountered an issue processing your request. Please try again.",
+      };
     }
   }
 
@@ -61,12 +73,13 @@ class AIService {
    * Send message to Gemini API
    */
   async sendToGemini(messages, model, temperature, maxTokens) {
+    console.log("Sending to Gemini with model:", model);
     if (!this.apiKey) {
-      throw new Error('Gemini API key not configured')
+      throw new Error("Gemini API key not configured");
     }
 
     // Convert messages to Gemini format
-    const contents = this.formatMessagesForGemini(messages)
+    const contents = this.formatMessagesForGemini(messages);
 
     const requestBody = {
       contents,
@@ -74,54 +87,60 @@ class AIService {
         temperature,
         maxOutputTokens: maxTokens,
         topP: 0.95,
-        topK: 64
+        topK: 64,
       },
       safetySettings: [
         {
-          category: 'HARM_CATEGORY_HARASSMENT',
-          threshold: 'BLOCK_MEDIUM_AND_ABOVE'
+          category: "HARM_CATEGORY_HARASSMENT",
+          threshold: "BLOCK_MEDIUM_AND_ABOVE",
         },
         {
-          category: 'HARM_CATEGORY_HATE_SPEECH',
-          threshold: 'BLOCK_MEDIUM_AND_ABOVE'
+          category: "HARM_CATEGORY_HATE_SPEECH",
+          threshold: "BLOCK_MEDIUM_AND_ABOVE",
         },
         {
-          category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-          threshold: 'BLOCK_MEDIUM_AND_ABOVE'
+          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+          threshold: "BLOCK_MEDIUM_AND_ABOVE",
         },
         {
-          category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-          threshold: 'BLOCK_MEDIUM_AND_ABOVE'
-        }
-      ]
-    }
+          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+          threshold: "BLOCK_MEDIUM_AND_ABOVE",
+        },
+      ],
+    };
 
-    const response = await fetch(`${this.baseURL}/${model}:generateContent?key=${this.apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
-    })
+    const response = await fetch(
+      `${this.baseURL}/${model}:generateContent?key=${this.apiKey}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      }
+    );
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.error?.message || `HTTP ${response.status}: ${response.statusText}`)
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        errorData.error?.message ||
+          `HTTP ${response.status}: ${response.statusText}`
+      );
     }
 
-    const data = await response.json()
-    
+    const data = await response.json();
+
     if (!data.candidates || data.candidates.length === 0) {
-      throw new Error('No response generated from AI')
+      throw new Error("No response generated from AI");
     }
 
-    const candidate = data.candidates[0]
-    if (candidate.finishReason === 'SAFETY') {
-      throw new Error('Response blocked by safety filters')
+    const candidate = data.candidates[0];
+    if (candidate.finishReason === "SAFETY") {
+      throw new Error("Response blocked by safety filters");
     }
 
-    const content = candidate.content?.parts?.[0]?.text || ''
-    
+    const content = candidate.content?.parts?.[0]?.text || "";
+
     return {
       success: true,
       content,
@@ -129,9 +148,9 @@ class AIService {
       usage: {
         promptTokens: data.usageMetadata?.promptTokenCount || 0,
         completionTokens: data.usageMetadata?.candidatesTokenCount || 0,
-        totalTokens: data.usageMetadata?.totalTokenCount || 0
-      }
-    }
+        totalTokens: data.usageMetadata?.totalTokenCount || 0,
+      },
+    };
   }
 
   /**
@@ -139,11 +158,11 @@ class AIService {
    */
   formatMessagesForGemini(messages) {
     return messages
-      .filter(msg => msg.role !== 'system') // Gemini doesn't support system messages directly
-      .map(msg => ({
-        role: msg.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: msg.content }]
-      }))
+      .filter((msg) => msg.role !== "system") // Gemini doesn't support system messages directly
+      .map((msg) => ({
+        role: msg.role === "assistant" ? "model" : "user",
+        parts: [{ text: msg.content }],
+      }));
   }
 
   /**
@@ -151,27 +170,28 @@ class AIService {
    */
   async getConversationContext(messages, maxMessages = 10, userId = null) {
     // Get recent messages for context
-    const recentMessages = messages.slice(-maxMessages)
-    
+    const recentMessages = messages.slice(-maxMessages);
+
     // Get user context summary if userId provided
-    let userContextSummary = ''
+    let userContextSummary = "";
     if (userId) {
       try {
-        const contextResult = await userContextService.getContextSummaryForPrompt(userId)
+        const contextResult =
+          await userContextService.getContextSummaryForPrompt(userId);
         if (contextResult.success) {
-          userContextSummary = contextResult.data
+          userContextSummary = contextResult.data;
         }
       } catch (error) {
-        console.error('Error getting user context:', error)
+        console.error("Error getting user context:", error);
       }
     }
-    
+
     // Enhanced system prompt with context awareness and task/event creation instructions
     const systemContext = {
-      role: 'user',
+      role: "user",
       content: `You are Jarvis, a helpful personal assistant. You should be conversational, friendly, and helpful. Provide clear and concise responses while being personable. If you need clarification or more information to help better, don't hesitate to ask follow-up questions.
 
-${userContextSummary ? userContextSummary + '\n' : ''}
+${userContextSummary ? userContextSummary + "\n" : ""}
 Based on conversations, you should:
 1. Learn about the user's preferences, habits, goals, and constraints
 2. Suggest tasks when the user mentions things they need to do
@@ -179,19 +199,19 @@ Based on conversations, you should:
 4. Remember important facts about the user for future reference
 5. Be proactive in helping them stay organized and productive
 
-When suggesting tasks or events, be specific about timing, priority, and details when possible.`
-    }
+When suggesting tasks or events, be specific about timing, priority, and details when possible.`,
+    };
 
-    return [systemContext, ...recentMessages]
+    return [systemContext, ...recentMessages];
   }
 
   /**
    * Switch AI provider/model
    */
   switchProvider(provider, model = null) {
-    this.currentProvider = provider
+    this.currentProvider = provider;
     if (model) {
-      this.defaultModel = model
+      this.defaultModel = model;
     }
   }
 
@@ -199,7 +219,7 @@ When suggesting tasks or events, be specific about timing, priority, and details
    * Get available models for current provider
    */
   getAvailableModels() {
-    return this.models[this.currentProvider] || {}
+    return this.models[this.currentProvider] || {};
   }
 
   /**
@@ -209,15 +229,15 @@ When suggesting tasks or events, be specific about timing, priority, and details
     return {
       provider: this.currentProvider,
       model: this.defaultModel,
-      hasApiKey: !!this.apiKey
-    }
+      hasApiKey: !!this.apiKey,
+    };
   }
 
   /**
    * Check if AI service is properly configured
    */
   isConfigured() {
-    return !!this.apiKey
+    return !!this.apiKey;
   }
 
   /**
@@ -227,15 +247,15 @@ When suggesting tasks or events, be specific about timing, priority, and details
   async extractAndStoreContext(messages, aiResponse, userId, conversationId) {
     try {
       if (!this.isConfigured()) {
-        return
+        return;
       }
 
       // Get the last few messages for context extraction
-      const recentMessages = messages.slice(-3)
-      const lastUserMessage = recentMessages.find(m => m.role === 'user')
-      
+      const recentMessages = messages.slice(-3);
+      const lastUserMessage = recentMessages.find((m) => m.role === "user");
+
       if (!lastUserMessage) {
-        return
+        return;
       }
 
       // Create extraction prompt
@@ -245,7 +265,7 @@ When suggesting tasks or events, be specific about timing, priority, and details
 3. Event suggestions for meetings, appointments, or time-based activities
 
 Recent conversation:
-${recentMessages.map(m => `${m.role}: ${m.content}`).join('\n')}
+${recentMessages.map((m) => `${m.role}: ${m.content}`).join("\n")}
 
 AI Response: ${aiResponse}
 
@@ -283,12 +303,14 @@ Please respond with valid JSON in this format:
   ]
 }
 
-Only include items that are clearly mentioned or strongly implied. Use high confidence (0.8-1.0) for explicit statements, medium confidence (0.5-0.7) for implied information.`
+Only include items that are clearly mentioned or strongly implied. Use high confidence (0.8-1.0) for explicit statements, medium confidence (0.5-0.7) for implied information.`;
 
-      const extractionMessages = [{
-        role: 'user',
-        content: extractionPrompt
-      }]
+      const extractionMessages = [
+        {
+          role: "user",
+          content: extractionPrompt,
+        },
+      ];
 
       // Call AI for extraction
       const extractionResponse = await this.sendToGemini(
@@ -296,11 +318,11 @@ Only include items that are clearly mentioned or strongly implied. Use high conf
         this.models.gemini.flash, // Use flash for faster extraction
         0.3, // Lower temperature for more consistent JSON
         1000
-      )
+      );
 
       if (!extractionResponse.success) {
-        console.error('Context extraction failed:', extractionResponse.error)
-        return
+        console.error("Context extraction failed:", extractionResponse.error);
+        return;
       }
 
       // Parse and store extracted data
@@ -309,83 +331,97 @@ Only include items that are clearly mentioned or strongly implied. Use high conf
         userId,
         conversationId,
         lastUserMessage.id
-      )
-
+      );
     } catch (error) {
-      console.error('Error in context extraction:', error)
+      console.error("Error in context extraction:", error);
     }
   }
 
   /**
    * Process and store extraction results
    */
-  async processExtractionResults(extractionContent, userId, conversationId, messageId) {
+  async processExtractionResults(
+    extractionContent,
+    userId,
+    conversationId,
+    messageId
+  ) {
     try {
       // Try to parse JSON from the response
-      let extractedData
+      let extractedData;
       try {
         // Look for JSON in the response (might be wrapped in markdown)
-        const jsonMatch = extractionContent.match(/```json\s*(\{[\s\S]*\})\s*```/) || 
-                         extractionContent.match(/(\{[\s\S]*\})/)
-        
+        const jsonMatch =
+          extractionContent.match(/```json\s*(\{[\s\S]*\})\s*```/) ||
+          extractionContent.match(/(\{[\s\S]*\})/);
+
         if (jsonMatch) {
-          extractedData = JSON.parse(jsonMatch[1])
+          extractedData = JSON.parse(jsonMatch[1]);
         } else {
-          console.warn('No valid JSON found in extraction response')
-          return
+          console.warn("No valid JSON found in extraction response");
+          return;
         }
       } catch (parseError) {
-        console.error('Failed to parse extraction JSON:', parseError)
-        return
+        console.error("Failed to parse extraction JSON:", parseError);
+        return;
       }
 
       // Store contexts
       if (extractedData.contexts && Array.isArray(extractedData.contexts)) {
         for (const contextData of extractedData.contexts) {
-          if (contextData.key && contextData.value && contextData.confidence > 0.4) {
+          if (
+            contextData.key &&
+            contextData.value &&
+            contextData.confidence > 0.4
+          ) {
             await userContextService.storeContext({
               ...contextData,
               userId,
               extractedFromConversationId: conversationId,
-              extractedFromMessageId: messageId
-            })
+              extractedFromMessageId: messageId,
+            });
           }
         }
       }
 
       // Store task suggestions
-      if (extractedData.taskSuggestions && Array.isArray(extractedData.taskSuggestions)) {
+      if (
+        extractedData.taskSuggestions &&
+        Array.isArray(extractedData.taskSuggestions)
+      ) {
         for (const taskData of extractedData.taskSuggestions) {
           if (taskData.title && taskData.confidence > 0.5) {
             await userContextService.storeTaskSuggestion({
               ...taskData,
               userId,
               extractedFromConversationId: conversationId,
-              extractedFromMessageId: messageId
-            })
+              extractedFromMessageId: messageId,
+            });
           }
         }
       }
 
       // Store event suggestions
-      if (extractedData.eventSuggestions && Array.isArray(extractedData.eventSuggestions)) {
+      if (
+        extractedData.eventSuggestions &&
+        Array.isArray(extractedData.eventSuggestions)
+      ) {
         for (const eventData of extractedData.eventSuggestions) {
           if (eventData.title && eventData.confidence > 0.5) {
             await userContextService.storeEventSuggestion({
               ...eventData,
               userId,
               extractedFromConversationId: conversationId,
-              extractedFromMessageId: messageId
-            })
+              extractedFromMessageId: messageId,
+            });
           }
         }
       }
-
     } catch (error) {
-      console.error('Error processing extraction results:', error)
+      console.error("Error processing extraction results:", error);
     }
   }
 }
 
-export const aiService = new AIService()
-export default aiService
+export const aiService = new AIService();
+export default aiService;

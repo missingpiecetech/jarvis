@@ -178,10 +178,10 @@ const messagesContainer = ref(null)
 
 // AI Configuration
 const apiKey = ref('')
-const selectedModel = ref('gemini-1.5-flash')
+const selectedModel = ref('gemini-2.0-flash-lite')
 const modelOptions = [
-  { label: 'Gemini 1.5 Flash (Fast)', value: 'gemini-1.5-flash' },
-  { label: 'Gemini 1.5 Pro (Advanced)', value: 'gemini-1.5-pro' }
+  { label: 'Gemini 2.0 Flash Lite (Fast)', value: 'gemini-2.0-flash-lite' },
+  { label: 'Gemini 2.5 Pro (Advanced)', value: 'gemini-2.5-pro' }
 ]
 
 // Computed properties
