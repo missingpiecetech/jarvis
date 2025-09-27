@@ -58,6 +58,14 @@
               </div>
               <div class="message-content">
                 <div class="message-text" v-html="formatMessageContent(message.content)"></div>
+                
+                <!-- Visual Elements for Commands -->
+                <div v-if="message.visualElements && message.visualElements.length > 0" class="message-visual-elements q-mt-sm">
+                  <div v-for="element in message.visualElements" :key="element.id" class="q-mb-sm">
+                    <ChatTaskCard v-if="element.type === 'task_card'" :task="element" />
+                  </div>
+                </div>
+                
                 <div class="message-meta text-caption text-grey-6">
                   {{ formatTime(message.timestamp) }}
                   <span v-if="message.model" class="q-ml-sm">• {{ message.model }}</span>
@@ -164,6 +172,7 @@ import { useQuasar } from 'quasar'
 import { conversationService, aiService, chatCommandService } from 'src/services'
 import { Message } from 'src/models'
 import { useAuthStore } from 'src/stores/auth'
+import ChatTaskCard from 'src/components/ChatTaskCard.vue'
 
 const $q = useQuasar()
 const authStore = useAuthStore()
@@ -369,7 +378,8 @@ async function sendMessage() {
       timestamp: new Date(),
       isError: isError,
       model: selectedModel.value,
-      isCommand: commandResult?.isCommand || false
+      isCommand: commandResult?.isCommand || false,
+      visualElements: commandResult?.visualElements || null
     })
     
     messages.value.push(assistantMessage)

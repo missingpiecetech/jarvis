@@ -102,8 +102,99 @@ class ChatTaskService {
   }
 
   /**
-   * Extract multiple task entities from message
+   * Generate LLM prompt for task interpretation and JSON generation
    */
+  generateTaskInterpretationPrompt(userMessage) {
+    return `You are a task management assistant. Your job is to interpret user messages and extract actionable tasks in a structured format.
+
+User Message: "${userMessage}"
+
+Please analyze the message and return ONLY valid JSON with the following structure:
+{
+  "intent": "create_task" | "list_tasks" | "complete_task" | "delete_task" | "query_deadlines" | "query_priority_tasks",
+  "tasks": [
+    {
+      "title": "Clear, concise task title (rewritten for clarity)",
+      "description": "Brief description if context is available",
+      "priority": "low" | "medium" | "high" | "urgent",
+      "dueDate": "today" | "tomorrow" | "this_week" | "next_week" | "YYYY-MM-DD" | null,
+      "tags": ["tag1", "tag2"] // if any categories are mentioned
+    }
+  ],
+  "confidence": 0.0-1.0
+}
+
+Rules:
+1. Rewrite task titles to be clear, actionable, and concise
+2. Extract multiple tasks if the user mentions several activities
+3. Infer priority from language (urgent words = high/urgent, casual = medium/low)
+4. Parse dates naturally (today, tomorrow, specific dates, etc.)
+5. Add relevant tags based on context (work, personal, shopping, etc.)
+6. If it's not about task management, set intent to "unknown" and empty tasks array
+7. Return ONLY the JSON, no additional text
+
+Examples:
+"I need to buy groceries, call mom, and finish the report by Friday"
+→ Creates 3 tasks with Friday due date
+
+"Remind me to call John tomorrow urgent"
+→ Creates 1 urgent task due tomorrow
+
+"What are my high priority tasks?"
+→ Intent: query_priority_tasks, empty tasks array`
+  }
+
+  /**
+   * Enhanced task intent parsing using LLM interpretation
+   */
+  async parseTaskIntentWithLLM(message, aiService) {
+    try {
+      if (!aiService || !aiService.isConfigured()) {
+        // Fallback to regex-based parsing if AI is not available
+        return this.parseTaskIntent(message)
+      }
+
+      const prompt = this.generateTaskInterpretationPrompt(message)
+      
+      const aiResponse = await aiService.sendMessage([
+        {
+          role: 'user',
+          content: prompt
+        }
+      ], {
+        temperature: 0.1, // Low temperature for consistent parsing
+        maxTokens: 1000
+      })
+
+      if (aiResponse.success) {
+        try {
+          // Extract JSON from the response
+          const jsonMatch = aiResponse.content.match(/\{[\s\S]*\}/)
+          if (jsonMatch) {
+            const parsedResult = JSON.parse(jsonMatch[0])
+            
+            // Validate the structure
+            if (parsedResult.intent && Array.isArray(parsedResult.tasks)) {
+              return {
+                intent: parsedResult.intent,
+                entities: parsedResult.tasks.length === 1 ? parsedResult.tasks[0] : parsedResult.tasks,
+                isMultiple: parsedResult.tasks.length > 1,
+                confidence: parsedResult.confidence || 0.8,
+                isLLMParsed: true
+              }
+            }
+          }
+        } catch (parseError) {
+          console.warn('Failed to parse LLM response, falling back to regex:', parseError)
+        }
+      }
+    } catch (error) {
+      console.warn('LLM parsing failed, falling back to regex:', error)
+    }
+
+    // Fallback to original regex-based parsing
+    return this.parseTaskIntent(message)
+  }
   extractMultipleTaskEntities(message) {
     // Split message into potential task segments
     const segments = this.splitIntoTaskSegments(message)
@@ -284,11 +375,16 @@ class ChatTaskService {
           success: successTasks.length > 0,
           tasks: successTasks,
           message: message.trim(),
-          isMultiple: true
+          isMultiple: true,
+          visualElements: this.generateTaskCards(successTasks)
         }
       } else {
         // Handle single task
-        return await this.createSingleTask(entities, userId)
+        const result = await this.createSingleTask(entities, userId)
+        if (result.success) {
+          result.visualElements = this.generateTaskCards([result.task])
+        }
+        return result
       }
     } catch (error) {
       return {
@@ -296,6 +392,26 @@ class ChatTaskService {
         message: `❌ Error creating task(s): ${error.message}`
       }
     }
+  }
+
+  /**
+   * Generate visual task cards for chat display
+   */
+  generateTaskCards(tasks) {
+    if (!Array.isArray(tasks)) {
+      tasks = [tasks]
+    }
+
+    return tasks.map(task => ({
+      type: 'task_card',
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      priority: task.priority,
+      dueDate: task.dueDate,
+      status: task.status,
+      clickAction: `/tasks/${task.id}`
+    }))
   }
 
   /**

@@ -14,12 +14,12 @@ class ChatCommandService {
   }
 
   /**
-   * Process a user message for task/event commands
+   * Process a user message for task/event commands with enhanced LLM parsing
    */
   async processMessage(message, userId, conversationId = null) {
     try {
-      // Parse both task and event intents
-      const taskIntent = this.chatTaskService.parseTaskIntent(message)
+      // Use enhanced LLM parsing for task interpretation
+      const taskIntent = await this.chatTaskService.parseTaskIntentWithLLM(message, this.aiService)
       const eventIntent = this.chatEventService.parseEventIntent(message)
       
       // Determine which intent is more confident
@@ -37,7 +37,7 @@ class ChatCommandService {
         return null
       }
       
-      // If we processed a command, return the result
+      // If we processed a command, return the result with visual elements
       if (result) {
         return {
           isCommand: true,
@@ -45,7 +45,8 @@ class ChatCommandService {
           message: result.message,
           data: result.task || result.event || result.tasks || result.events,
           needsClarification: result.needsClarification,
-          clarificationOptions: result.tasks || result.events
+          clarificationOptions: result.tasks || result.events,
+          visualElements: result.visualElements || null // For task/event cards in chat
         }
       }
       
@@ -55,9 +56,29 @@ class ChatCommandService {
       return {
         isCommand: true,
         success: false,
-        message: `❌ Error processing command: ${error.message}`
+        message: '❌ I encountered an error processing your request. Please try again.'
       }
     }
+  }
+
+  /**
+   * Generate visual task cards for chat display
+   */
+  generateTaskCards(tasks) {
+    if (!Array.isArray(tasks)) {
+      tasks = [tasks]
+    }
+
+    return tasks.map(task => ({
+      type: 'task_card',
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      priority: task.priority,
+      dueDate: task.dueDate,
+      status: task.status,
+      clickAction: `/tasks/${task.id}` // Route to task detail page
+    }))
   }
 
   /**
