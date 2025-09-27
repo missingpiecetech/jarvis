@@ -355,6 +355,7 @@ async function sendMessage() {
     
     let assistantContent = ''
     let assistantMessage
+    let isError = false
     
     if (actionResult && actionResult.success && actionResult.actions.length > 0) {
       // Actions were identified - show confirmation interface
@@ -422,51 +423,6 @@ async function sendMessage() {
     // Save assistant message to conversation
     if (currentConversationId.value) {
       await conversationService.addMessage(currentConversationId.value, assistantMessage)
-    }
-    
-    // Scroll to bottom
-    nextTick(() => scrollToBottom())
-      
-      // Add enhanced context about tasks and events
-      const enhancedContext = await chatCommandService.getEnhancedContext(authStore.user?.id)
-      if (enhancedContext && contextMessages.length > 0) {
-        contextMessages[0].content += enhancedContext
-      }
-      
-      // Add enhanced system prompt
-      const enhancedSystemPrompt = chatCommandService.getEnhancedSystemPrompt()
-      if (contextMessages.length > 0) {
-        contextMessages[0].content = enhancedSystemPrompt + '\n\n' + contextMessages[0].content
-      }
-      
-      // Send to AI with context extraction enabled
-      const aiResponse = await aiService.sendMessage(contextMessages, {
-        model: selectedModel.value,
-        userId: authStore.user?.id,
-        conversationId: currentConversationId.value,
-        extractContext: true
-      })
-      
-      assistantContent = aiResponse.content
-      isError = !aiResponse.success
-    }
-    
-    // Create assistant message
-    const assistantMessage = new Message({
-      role: 'assistant',
-      content: assistantContent,
-      timestamp: new Date(),
-      isError: isError,
-      model: selectedModel.value,
-      isCommand: commandResult?.isCommand || false,
-      visualElements: commandResult?.visualElements || null
-    })
-    
-    messages.value.push(assistantMessage)
-    
-    // Save assistant message to conversation
-    if (currentConversationId.value) {
-      await conversationService.addMessage(currentConversationId.value, assistantMessage)
       
       // Update conversation title if this is the first exchange
       if (messages.value.length <= 2 && !conversationTitle.value) {
@@ -479,12 +435,8 @@ async function sendMessage() {
       }
     }
     
-    if (isError) {
-      $q.notify({
-        type: 'negative',
-        message: commandResult?.isCommand ? 'Command failed' : 'AI response failed'
-      })
-    }
+    // Scroll to bottom
+    nextTick(() => scrollToBottom())
     
   } catch (error) {
     console.error('Error sending message:', error)
