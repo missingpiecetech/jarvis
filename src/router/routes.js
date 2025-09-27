@@ -47,6 +47,16 @@ const routes = [
         path: 'tasks/:id', 
         component: () => import('pages/TaskDetailPage.vue'),
         meta: { requiresAuth: true, requiresOnboarding: true }
+      },
+      { 
+        path: 'calendar', 
+        component: () => import('pages/CalendarPageSimple.vue'),
+        meta: { requiresAuth: true, requiresOnboarding: true }
+      },
+      { 
+        path: 'settings', 
+        component: () => import('pages/SettingsPage.vue'),
+        meta: { requiresAuth: true, requiresOnboarding: true }
       }
     ]
   },

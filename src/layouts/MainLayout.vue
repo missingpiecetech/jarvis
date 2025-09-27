@@ -74,13 +74,13 @@
             </q-item-section>
           </q-item>
 
-          <q-item clickable v-ripple disabled>
+          <q-item clickable v-ripple @click="$router.push('/calendar')">
             <q-item-section avatar>
               <q-icon name="event" />
             </q-item-section>
             <q-item-section>
               <q-item-label>Calendar</q-item-label>
-              <q-item-label caption>Coming Soon</q-item-label>
+              <q-item-label caption>Manage your events</q-item-label>
             </q-item-section>
           </q-item>
 
@@ -96,13 +96,13 @@
 
           <q-separator class="q-my-md" />
 
-          <q-item clickable v-ripple disabled>
+          <q-item clickable v-ripple @click="$router.push('/settings')">
             <q-item-section avatar>
               <q-icon name="settings" />
             </q-item-section>
             <q-item-section>
               <q-item-label>Settings</q-item-label>
-              <q-item-label caption>Coming Soon</q-item-label>
+              <q-item-label caption>Manage preferences</q-item-label>
             </q-item-section>
           </q-item>
         </template>

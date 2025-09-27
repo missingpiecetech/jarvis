@@ -454,5 +454,6 @@ Only include items that are clearly mentioned or strongly implied. Use high conf
   }
 }
 
+export { AIService }
 export const aiService = new AIService();
 export default aiService;

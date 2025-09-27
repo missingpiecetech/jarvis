@@ -58,7 +58,7 @@ class EventService {
       // Try cache first
       const cachedEvent = await cacheService.get(`${this.cacheKey}_${id}`)
       if (cachedEvent) {
-        return { success: true, data: new Event(cachedEvent) }
+        return { success: true, data: this.deserializeEvent(cachedEvent) }
       }
 
       // Try PocketBase
@@ -101,7 +101,7 @@ class EventService {
       // Fallback to cache if PocketBase fails or offline
       if (events.length === 0) {
         const cachedEvents = await cacheService.get(this.cacheKey) || []
-        events = cachedEvents.map(eventData => new Event(eventData))
+        events = cachedEvents.map(eventData => this.deserializeEvent(eventData))
       }
 
       // Apply filters
@@ -243,16 +243,40 @@ class EventService {
    * Cache a single event
    */
   async cacheEvent(event) {
-    await cacheService.set(`${this.cacheKey}_${event.id}`, event)
+    // Convert event to a plain object to avoid IndexedDB cloning issues
+    const plainEvent = {
+      id: event.id,
+      title: event.title,
+      description: event.description,
+      startDate: event.startDate ? event.startDate.toISOString() : null,
+      endDate: event.endDate ? event.endDate.toISOString() : null,
+      isAllDay: event.isAllDay,
+      location: event.location,
+      recurrence: event.recurrence,
+      reminders: [...(event.reminders || [])],
+      attendees: [...(event.attendees || [])],
+      status: event.status,
+      visibility: event.visibility,
+      color: event.color,
+      userId: event.userId,
+      calendarId: event.calendarId,
+      externalId: event.externalId,
+      provider: event.provider,
+      createdAt: event.createdAt ? event.createdAt.toISOString() : null,
+      updatedAt: event.updatedAt ? event.updatedAt.toISOString() : null,
+      timezone: event.timezone
+    }
+    
+    await cacheService.set(`${this.cacheKey}_${event.id}`, plainEvent)
     
     // Also update the events list cache
     const cachedEvents = await cacheService.get(this.cacheKey) || []
     const existingIndex = cachedEvents.findIndex(e => e.id === event.id)
     
     if (existingIndex >= 0) {
-      cachedEvents[existingIndex] = event
+      cachedEvents[existingIndex] = plainEvent
     } else {
-      cachedEvents.push(event)
+      cachedEvents.push(plainEvent)
     }
     
     await cacheService.set(this.cacheKey, cachedEvents)
@@ -262,12 +286,49 @@ class EventService {
    * Cache multiple events
    */
   async cacheEvents(events) {
-    await cacheService.set(this.cacheKey, events)
+    // Convert events to plain objects
+    const plainEvents = events.map(event => ({
+      id: event.id,
+      title: event.title,
+      description: event.description,
+      startDate: event.startDate ? event.startDate.toISOString() : null,
+      endDate: event.endDate ? event.endDate.toISOString() : null,
+      isAllDay: event.isAllDay,
+      location: event.location,
+      recurrence: event.recurrence,
+      reminders: [...(event.reminders || [])],
+      attendees: [...(event.attendees || [])],
+      status: event.status,
+      visibility: event.visibility,
+      color: event.color,
+      userId: event.userId,
+      calendarId: event.calendarId,
+      externalId: event.externalId,
+      provider: event.provider,
+      createdAt: event.createdAt ? event.createdAt.toISOString() : null,
+      updatedAt: event.updatedAt ? event.updatedAt.toISOString() : null,
+      timezone: event.timezone
+    }))
+    
+    await cacheService.set(this.cacheKey, plainEvents)
     
     // Also cache individual events
-    for (const event of events) {
-      await cacheService.set(`${this.cacheKey}_${event.id}`, event)
+    for (const plainEvent of plainEvents) {
+      await cacheService.set(`${this.cacheKey}_${plainEvent.id}`, plainEvent)
     }
+  }
+
+  /**
+   * Deserialize an event from cached data
+   */
+  deserializeEvent(eventData) {
+    return new Event({
+      ...eventData,
+      startDate: eventData.startDate ? new Date(eventData.startDate) : null,
+      endDate: eventData.endDate ? new Date(eventData.endDate) : null,
+      createdAt: eventData.createdAt ? new Date(eventData.createdAt) : null,
+      updatedAt: eventData.updatedAt ? new Date(eventData.updatedAt) : null,
+    })
   }
 
   /**
