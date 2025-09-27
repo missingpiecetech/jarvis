@@ -66,6 +66,35 @@
                   </div>
                 </div>
                 
+                <!-- Action Cards for Confirmation -->
+                <div v-if="message.actions && message.actions.length > 0" class="message-actions q-mt-sm">
+                  <div class="text-caption text-grey-6 q-mb-sm">
+                    Please review and confirm the following actions:
+                  </div>
+                  <ActionCard
+                    v-for="(action, index) in message.actions"
+                    :key="`action-${index}`"
+                    :action="action"
+                    @accept="acceptAction(action, message)"
+                    @reject="rejectAction(action, message)"
+                  />
+                  <div v-if="message.actions.length > 1" class="q-mt-sm">
+                    <q-btn
+                      color="positive"
+                      label="Accept All"
+                      size="sm"
+                      @click="acceptAllActions(message)"
+                    />
+                    <q-btn
+                      color="negative"
+                      label="Reject All"
+                      size="sm"
+                      class="q-ml-sm"
+                      @click="rejectAllActions(message)"
+                    />
+                  </div>
+                </div>
+                
                 <div class="message-meta text-caption text-grey-6">
                   {{ formatTime(message.timestamp) }}
                   <span v-if="message.model" class="q-ml-sm">• {{ message.model }}</span>
@@ -174,6 +203,7 @@ import { conversationService, aiService, chatCommandService } from 'src/services
 import { Message } from 'src/models'
 import { useAuthStore } from 'src/stores/auth'
 import ChatTaskCard from 'src/components/ChatTaskCard.vue'
+import ActionCard from 'src/components/ActionCard.vue'
 
 const $q = useQuasar()
 const authStore = useAuthStore()
@@ -316,37 +346,86 @@ async function sendMessage() {
   isTyping.value = true
   
   try {
-    // First, check if this is a task/event command
-    const commandResult = await chatCommandService.processMessage(
+    // Process message with new action-based system
+    const actionResult = await chatCommandService.processMessage(
       userMessage, 
       authStore.user?.id, 
       currentConversationId.value
     )
     
     let assistantContent = ''
-    let isError = false
+    let assistantMessage
     
-    if (commandResult && commandResult.isCommand) {
-      // This was a recognized command
-      assistantContent = commandResult.message
-      isError = !commandResult.success
+    if (actionResult && actionResult.success && actionResult.actions.length > 0) {
+      // Actions were identified - show confirmation interface
+      assistantContent = actionResult.response
       
-      if (commandResult.success) {
-        // Add success notification
-        $q.notify({
-          type: 'positive',
-          message: 'Command executed successfully',
-          position: 'top'
-        })
-      }
+      assistantMessage = new Message({
+        role: 'assistant',
+        content: assistantContent,
+        timestamp: new Date(),
+        isCommand: true,
+        actions: actionResult.actions,
+        needsConfirmation: actionResult.needsConfirmation
+      })
+      
+    } else if (actionResult && actionResult.response) {
+      // No actions but got a response (like answering questions)
+      assistantContent = actionResult.response
+      
+      assistantMessage = new Message({
+        role: 'assistant',
+        content: assistantContent,
+        timestamp: new Date(),
+        isCommand: false
+      })
+      
     } else {
-      // Not a command, proceed with normal AI processing
+      // Not a recognized command, proceed with normal AI processing
       // Get conversation context with enhanced task/event context
       let contextMessages = await aiService.getConversationContext(
         messages.value, 
         10, 
         authStore.user?.id
       )
+      
+      // Send to AI service
+      const aiResponse = await aiService.sendMessage(
+        contextMessages,
+        {
+          model: selectedModel.value,
+          temperature: 0.7,
+          maxTokens: 2048,
+          userId: authStore.user?.id,
+          conversationId: currentConversationId.value
+        }
+      )
+      
+      if (aiResponse.success) {
+        assistantContent = aiResponse.content
+      } else {
+        assistantContent = 'I apologize, but I encountered an error processing your request. Please try again.'
+        isError = true
+      }
+      
+      assistantMessage = new Message({
+        role: 'assistant',
+        content: assistantContent,
+        timestamp: new Date(),
+        model: selectedModel.value,
+        isError
+      })
+    }
+    
+    messages.value.push(assistantMessage)
+    
+    // Save assistant message to conversation
+    if (currentConversationId.value) {
+      await conversationService.addMessage(currentConversationId.value, assistantMessage)
+    }
+    
+    // Scroll to bottom
+    nextTick(() => scrollToBottom())
       
       // Add enhanced context about tasks and events
       const enhancedContext = await chatCommandService.getEnhancedContext(authStore.user?.id)
@@ -518,6 +597,140 @@ function saveSettings() {
   $q.notify({
     type: 'positive',
     message: 'Settings saved successfully'
+  })
+}
+
+/**
+ * Accept an individual action
+ */
+async function acceptAction(action, message) {
+  try {
+    isTyping.value = true
+    
+    // Execute the action
+    const results = await chatCommandService.executeActions([action], authStore.user?.id)
+    
+    // Update the message to show action was accepted
+    const actionIndex = message.actions.findIndex(a => a === action)
+    if (actionIndex !== -1) {
+      message.actions[actionIndex].status = 'accepted'
+    }
+    
+    // Add result message
+    const result = results[0]
+    const resultMessage = new Message({
+      role: 'assistant',
+      content: result.success ? 
+        `✅ Action completed successfully` : 
+        `❌ Action failed: ${result.result?.error || 'Unknown error'}`,
+      timestamp: new Date(),
+      isCommand: true
+    })
+    
+    messages.value.push(resultMessage)
+    
+    if (result.success) {
+      $q.notify({
+        type: 'positive',
+        message: 'Action completed successfully'
+      })
+    }
+    
+    nextTick(() => scrollToBottom())
+  } catch (error) {
+    console.error('Error executing action:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to execute action'
+    })
+  } finally {
+    isTyping.value = false
+  }
+}
+
+/**
+ * Reject an individual action
+ */
+async function rejectAction(action, message) {
+  // Update the message to show action was rejected
+  const actionIndex = message.actions.findIndex(a => a === action)
+  if (actionIndex !== -1) {
+    message.actions[actionIndex].status = 'rejected'
+  }
+  
+  $q.notify({
+    type: 'info',
+    message: 'Action rejected'
+  })
+}
+
+/**
+ * Accept all actions in a message
+ */
+async function acceptAllActions(message) {
+  try {
+    isTyping.value = true
+    
+    // Filter out already processed actions
+    const pendingActions = message.actions.filter(a => !a.status)
+    
+    if (pendingActions.length === 0) return
+    
+    // Execute all actions
+    const results = await chatCommandService.executeActions(pendingActions, authStore.user?.id)
+    
+    // Update action statuses
+    pendingActions.forEach(action => {
+      const actionIndex = message.actions.findIndex(a => a === action)
+      if (actionIndex !== -1) {
+        message.actions[actionIndex].status = 'accepted'
+      }
+    })
+    
+    // Add result message
+    const successCount = results.filter(r => r.success).length
+    const totalCount = results.length
+    
+    const resultMessage = new Message({
+      role: 'assistant',
+      content: `✅ Completed ${successCount} of ${totalCount} actions`,
+      timestamp: new Date(),
+      isCommand: true
+    })
+    
+    messages.value.push(resultMessage)
+    
+    $q.notify({
+      type: 'positive',
+      message: `Completed ${successCount} of ${totalCount} actions`
+    })
+    
+    nextTick(() => scrollToBottom())
+  } catch (error) {
+    console.error('Error executing actions:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to execute actions'
+    })
+  } finally {
+    isTyping.value = false
+  }
+}
+
+/**
+ * Reject all actions in a message
+ */
+async function rejectAllActions(message) {
+  // Update all action statuses
+  message.actions.forEach(action => {
+    if (!action.status) {
+      action.status = 'rejected'
+    }
+  })
+  
+  $q.notify({
+    type: 'info',
+    message: 'All actions rejected'
   })
 }
 </script>

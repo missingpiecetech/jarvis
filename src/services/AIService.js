@@ -15,7 +15,7 @@ class AIService {
         pro: "gemini-2.5-pro",
       },
     };
-    this.defaultModel = this.models.gemini.flash;
+    this.defaultModel = this.models.gemini.pro;
     this.apiKey = import.meta.env.VITE_GEMINI_API_KEY;
     this.baseURL = "https://generativelanguage.googleapis.com/v1beta/models";
   }
@@ -52,12 +52,11 @@ Respond naturally while following the instructions above.`
       const userId = options.userId;
       const conversationId = options.conversationId;
 
-      // Add base instructions to system message
-      const enhancedMessages = [...messages];
-      if (enhancedMessages.length > 0 && enhancedMessages[0].role === 'system') {
-        enhancedMessages[0].content = this.getBaseInstructions() + '\n\n' + enhancedMessages[0].content;
+      // Add base instructions to system message  
+      if (messages.length > 0 && messages[0].role === 'system') {
+        messages[0].content = this.getBaseInstructions() + '\n\n' + messages[0].content;
       } else {
-        enhancedMessages.unshift({
+        messages.unshift({
           role: 'system',
           content: this.getBaseInstructions()
         });
@@ -66,7 +65,7 @@ Respond naturally while following the instructions above.`
       switch (this.currentProvider) {
         case "gemini":
           const response = await this.sendToGemini(
-            enhancedMessages,
+            messages,
             model,
             temperature,
             maxTokens
@@ -76,7 +75,7 @@ Respond naturally while following the instructions above.`
           if (response.success && extractContext && userId) {
             // Run context extraction in background (don't wait for it)
             this.extractAndStoreContext(
-              enhancedMessages,
+              messages,
               response.content,
               userId,
               conversationId
