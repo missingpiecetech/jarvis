@@ -111,7 +111,7 @@ User Message: "${userMessage}"
 
 Please analyze the message and return ONLY valid JSON with the following structure:
 {
-  "intent": "create_task" | "list_tasks" | "complete_task" | "delete_task" | "query_deadlines" | "query_priority_tasks",
+  "intent": "create_task" | "edit_task" | "list_tasks" | "complete_task" | "delete_task" | "query_deadlines" | "query_priority_tasks",
   "tasks": [
     {
       "title": "Clear, concise task title (rewritten for clarity)",
@@ -130,8 +130,9 @@ Rules:
 3. Infer priority from language (urgent words = high/urgent, casual = medium/low)
 4. Parse dates naturally (today, tomorrow, specific dates, etc.)
 5. Add relevant tags based on context (work, personal, shopping, etc.)
-6. If it's not about task management, set intent to "unknown" and empty tasks array
-7. Return ONLY the JSON, no additional text
+6. For edit_task intent, recognize when user wants to update existing tasks
+7. If it's not about task management, set intent to "unknown" and empty tasks array
+8. Return ONLY the JSON, no additional text
 
 Examples:
 "I need to buy groceries, call mom, and finish the report by Friday"
@@ -139,6 +140,9 @@ Examples:
 
 "Remind me to call John tomorrow urgent"
 → Creates 1 urgent task due tomorrow
+
+"Update my grocery task to high priority"
+→ Intent: edit_task for updating existing task
 
 "What are my high priority tasks?"
 → Intent: query_priority_tasks, empty tasks array`

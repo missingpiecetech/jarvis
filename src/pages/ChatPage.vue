@@ -96,16 +96,17 @@
       </div>
 
       <!-- Input Area -->
-      <div class="chat-input-container bg-grey-1 q-pa-md">
-        <div class="chat-input-wrapper">
+      <div class="chat-input-container bg-grey-1">
+        <div class="chat-input-wrapper q-pa-md">
           <q-input
             v-model="inputMessage"
-            placeholder="Type your message..."
+            placeholder="Type your message... (Shift+Enter for new line)"
             outlined
-            dense
+            type="textarea"
+            :rows="Math.min(inputMessage.split('\n').length || 1, 4)"
             autogrow
             :disable="isTyping"
-            @keydown.enter.prevent="handleEnterKey"
+            @keydown="handleKeyDown"
             class="chat-input"
           >
             <template v-slot:append>
@@ -123,7 +124,7 @@
         </div>
         
         <!-- AI Configuration Status -->
-        <div v-if="!aiConfigured" class="text-caption text-warning q-mt-sm">
+        <div v-if="!aiConfigured" class="text-caption text-warning q-pa-md q-pt-none">
           <q-icon name="warning" class="q-mr-xs" />
           AI service not configured. Please add your API key to use the assistant.
         </div>
@@ -429,11 +430,18 @@ async function sendMessage() {
 }
 
 /**
- * Handle Enter key in input
+ * Handle keyboard input in textarea
  */
-function handleEnterKey(event) {
-  if (!event.shiftKey) {
-    sendMessage()
+function handleKeyDown(event) {
+  if (event.key === 'Enter') {
+    if (event.shiftKey) {
+      // Shift+Enter: allow new line (default behavior)
+      return
+    } else {
+      // Enter alone: send message
+      event.preventDefault()
+      sendMessage()
+    }
   }
 }
 
@@ -519,18 +527,32 @@ function saveSettings() {
   height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .chat-container {
   height: 100%;
   display: flex;
   flex-direction: column;
+  min-height: 0; // Allow flexing
 }
 
 .messages-container {
   flex: 1;
   overflow-y: auto;
   background: #fafafa;
+  min-height: 0; // Allow container to shrink
+}
+
+.chat-input-container {
+  flex-shrink: 0; // Don't allow input to shrink
+  border-top: 1px solid #e0e0e0;
+}
+
+.chat-input {
+  .q-field__control {
+    min-height: 48px;
+  }
 }
 
 .message-wrapper {

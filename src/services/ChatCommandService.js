@@ -1,40 +1,168 @@
 /**
  * Chat Command Service
  * Coordinates task and event management through natural language commands
+ * Enhanced with intelligent model selection and task update capabilities
  */
 import { chatTaskService } from './ChatTaskService.js'
 import { chatEventService } from './ChatEventService.js'
 import { aiService } from './AIService.js'
+import { taskService } from './TaskService.js'
 
 class ChatCommandService {
   constructor() {
     this.chatTaskService = chatTaskService
     this.chatEventService = chatEventService
     this.aiService = aiService
+    this.taskService = taskService
   }
 
   /**
-   * Process a user message for task/event commands with enhanced LLM parsing
+   * Classify user request intent using fast model
+   */
+  async classifyRequest(message) {
+    const classificationPrompt = `Classify this user request into one of these categories. Return ONLY the category name:
+
+Categories:
+- CREATE_TASK: User wants to create new tasks
+- UPDATE_TASK: User wants to modify existing tasks
+- DELETE_TASK: User wants to remove tasks
+- QUERY_TASKS: User wants to see/list tasks
+- CREATE_EVENT: User wants to create events
+- GENERAL_QUESTION: User is asking questions or having conversation
+- OTHER: Anything else
+
+User message: "${message}"
+
+Classification:`
+
+    try {
+      const response = await this.aiService.sendMessage([{
+        role: 'user',
+        content: classificationPrompt
+      }], {
+        model: 'gemini-2.0-flash-lite', // Use fast model for classification
+        temperature: 0.1,
+        maxTokens: 50
+      })
+
+      if (response.success) {
+        const classification = response.content.trim().toUpperCase()
+        return {
+          intent: classification,
+          confidence: 0.9
+        }
+      }
+    } catch (error) {
+      console.error('Error classifying request:', error)
+    }
+
+    return { intent: 'OTHER', confidence: 0.1 }
+  }
+
+  /**
+   * Get relevant task context for updates
+   */
+  async getTaskUpdateContext(message, userId) {
+    try {
+      // Get recent tasks and search for relevant ones
+      const tasksResult = await this.taskService.getAll()
+      if (!tasksResult.success) return null
+
+      const tasks = tasksResult.data
+      
+      // Find tasks mentioned in the message or recent tasks
+      const relevantTasks = []
+      
+      // Simple keyword matching for task titles
+      const messageWords = message.toLowerCase().split(/\s+/)
+      
+      for (const task of tasks.slice(0, 20)) { // Limit to recent 20 tasks
+        const titleWords = task.title.toLowerCase().split(/\s+/)
+        const overlap = titleWords.some(word => 
+          messageWords.some(msgWord => 
+            msgWord.includes(word) || word.includes(msgWord)
+          )
+        )
+        
+        if (overlap) {
+          relevantTasks.push({
+            id: task.id,
+            title: task.title,
+            description: task.description,
+            priority: task.priority,
+            status: task.status,
+            dueDate: task.dueDate
+          })
+        }
+      }
+
+      // If no keyword matches, include most recent tasks
+      if (relevantTasks.length === 0) {
+        relevantTasks.push(...tasks.slice(0, 5).map(task => ({
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          priority: task.priority,
+          status: task.status,
+          dueDate: task.dueDate
+        })))
+      }
+
+      return relevantTasks
+    } catch (error) {
+      console.error('Error getting task context:', error)
+      return null
+    }
+  }
+
+  /**
+   * Process a user message with intelligent routing
    */
   async processMessage(message, userId, conversationId = null) {
     try {
-      // Use enhanced LLM parsing for task interpretation
-      const taskIntent = await this.chatTaskService.parseTaskIntentWithLLM(message, this.aiService)
-      const eventIntent = this.chatEventService.parseEventIntent(message)
+      // First, classify the request using fast model
+      const classification = await this.classifyRequest(message)
       
-      // Determine which intent is more confident
       let result = null
       
-      if (taskIntent.confidence > eventIntent.confidence && taskIntent.confidence > 0.6) {
-        result = await this.processTaskCommand(taskIntent, message, userId)
-      } else if (eventIntent.confidence > 0.6) {
-        result = await this.processEventCommand(eventIntent, message, userId)
-      } else if (taskIntent.confidence > 0.4 || eventIntent.confidence > 0.4) {
-        // Lower confidence - ask for clarification
-        result = await this.requestClarification(taskIntent, eventIntent, message)
-      } else {
-        // No clear command detected - return null to let normal AI processing continue
-        return null
+      switch (classification.intent) {
+        case 'CREATE_TASK':
+          // Use LLM parsing for task creation
+          const taskIntent = await this.chatTaskService.parseTaskIntentWithLLM(message, this.aiService)
+          if (taskIntent.confidence > 0.6) {
+            result = await this.processTaskCommand(taskIntent, message, userId)
+          }
+          break
+          
+        case 'UPDATE_TASK':
+          result = await this.processTaskUpdate(message, userId)
+          break
+          
+        case 'DELETE_TASK':
+          const deleteIntent = await this.chatTaskService.parseTaskIntentWithLLM(message, this.aiService)
+          if (deleteIntent.intent === 'delete_task') {
+            result = await this.processTaskCommand(deleteIntent, message, userId)
+          }
+          break
+          
+        case 'QUERY_TASKS':
+          const queryIntent = await this.chatTaskService.parseTaskIntentWithLLM(message, this.aiService)
+          if (queryIntent.confidence > 0.6) {
+            result = await this.processTaskCommand(queryIntent, message, userId)
+          }
+          break
+          
+        case 'CREATE_EVENT':
+          const eventIntent = this.chatEventService.parseEventIntent(message)
+          if (eventIntent.confidence > 0.6) {
+            result = await this.processEventCommand(eventIntent, message, userId)
+          }
+          break
+          
+        case 'GENERAL_QUESTION':
+        case 'OTHER':
+          // Let normal AI processing handle these
+          return null
       }
       
       // If we processed a command, return the result with visual elements
@@ -46,7 +174,7 @@ class ChatCommandService {
           data: result.task || result.event || result.tasks || result.events,
           needsClarification: result.needsClarification,
           clarificationOptions: result.tasks || result.events,
-          visualElements: result.visualElements || null // For task/event cards in chat
+          visualElements: result.visualElements || null
         }
       }
       
@@ -56,7 +184,95 @@ class ChatCommandService {
       return {
         isCommand: true,
         success: false,
-        message: '❌ I encountered an error processing your request. Please try again.'
+        message: '❌ Error processing request. Please try again.'
+      }
+    }
+  }
+
+  /**
+   * Process task update requests
+   */
+  async processTaskUpdate(message, userId) {
+    try {
+      // Get relevant task context
+      const taskContext = await this.getTaskUpdateContext(message, userId)
+      
+      if (!taskContext || taskContext.length === 0) {
+        return {
+          success: false,
+          message: "I couldn't find any tasks to update. Please be more specific about which task you want to modify."
+        }
+      }
+
+      const updatePrompt = `You are helping update existing tasks. Analyze the user's request and determine what changes to make.
+
+Current tasks context: ${JSON.stringify(taskContext, null, 2)}
+
+User request: "${message}"
+
+Return a JSON response with the updates needed:
+{
+  "taskId": "id_of_task_to_update",
+  "updates": {
+    "title": "new title if changed",
+    "description": "new description if changed", 
+    "priority": "low|medium|high|urgent if changed",
+    "dueDate": "YYYY-MM-DD or null if changed",
+    "status": "pending|in_progress|completed if changed"
+  },
+  "confidence": 0.0-1.0
+}
+
+If multiple tasks could be updated, choose the most relevant one. Only include fields that should be changed.`
+
+      const response = await this.aiService.sendMessage([{
+        role: 'user',
+        content: updatePrompt
+      }], {
+        model: 'gemini-2.5-pro', // Use pro model for complex task updates
+        temperature: 0.2,
+        maxTokens: 500
+      })
+
+      if (response.success) {
+        try {
+          const jsonMatch = response.content.match(/\{[\s\S]*\}/)
+          if (jsonMatch) {
+            const updateData = JSON.parse(jsonMatch[0])
+            
+            if (updateData.confidence > 0.6 && updateData.taskId && updateData.updates) {
+              // Apply the updates
+              const updateResult = await this.taskService.update(updateData.taskId, updateData.updates)
+              
+              if (updateResult.success) {
+                return {
+                  success: true,
+                  message: `✅ Updated task: "${updateResult.data.title}"`,
+                  task: updateResult.data,
+                  visualElements: this.generateTaskCards([updateResult.data])
+                }
+              } else {
+                return {
+                  success: false,
+                  message: `❌ Failed to update task: ${updateResult.error}`
+                }
+              }
+            }
+          }
+        } catch (parseError) {
+          console.error('Error parsing update response:', parseError)
+        }
+      }
+
+      return {
+        success: false,
+        message: "I couldn't understand what changes you want to make. Please be more specific."
+      }
+    } catch (error) {
+      console.error('Error processing task update:', error)
+      return {
+        success: false,
+        message: `❌ Error updating task: ${error.message}`
       }
     }
   }

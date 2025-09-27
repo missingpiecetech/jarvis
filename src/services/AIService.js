@@ -21,6 +21,26 @@ class AIService {
   }
 
   /**
+   * Get base system instructions for all AI responses
+   */
+  getBaseInstructions() {
+    return `SYSTEM INSTRUCTIONS - Follow these at all times:
+- Be concise, to the point, and unemotional
+- Do not praise or thank the user
+- Do not apologize unless there was a clear error
+- Provide direct, actionable responses
+- Focus on being helpful without emotional language
+
+CAPABILITIES:
+- Task management: Create, update, delete, and query tasks
+- Event scheduling: Manage calendar events
+- General assistance: Answer questions and provide information
+- Context awareness: Reference user's tasks and schedule when relevant
+
+Respond naturally while following the instructions above.`
+  }
+
+  /**
    * Send a message to the AI and get a response with context extraction
    */
   async sendMessage(messages, options = {}) {
@@ -32,10 +52,21 @@ class AIService {
       const userId = options.userId;
       const conversationId = options.conversationId;
 
+      // Add base instructions to system message
+      const enhancedMessages = [...messages];
+      if (enhancedMessages.length > 0 && enhancedMessages[0].role === 'system') {
+        enhancedMessages[0].content = this.getBaseInstructions() + '\n\n' + enhancedMessages[0].content;
+      } else {
+        enhancedMessages.unshift({
+          role: 'system',
+          content: this.getBaseInstructions()
+        });
+      }
+
       switch (this.currentProvider) {
         case "gemini":
           const response = await this.sendToGemini(
-            messages,
+            enhancedMessages,
             model,
             temperature,
             maxTokens
@@ -45,7 +76,7 @@ class AIService {
           if (response.success && extractContext && userId) {
             // Run context extraction in background (don't wait for it)
             this.extractAndStoreContext(
-              messages,
+              enhancedMessages,
               response.content,
               userId,
               conversationId
