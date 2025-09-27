@@ -139,6 +139,8 @@
                 <TaskCard 
                   :task="task" 
                   @click="$router.push(`/tasks/${task.id}`)"
+                  @delete="handleTaskDelete"
+                  @complete="handleTaskComplete"
                 />
               </div>
             </div>
@@ -159,6 +161,8 @@
                 <TaskCard 
                   :task="task" 
                   @click="$router.push(`/tasks/${task.id}`)"
+                  @delete="handleTaskDelete"
+                  @complete="handleTaskComplete"
                 />
               </div>
             </div>
@@ -179,6 +183,8 @@
                 <TaskCard 
                   :task="task" 
                   @click="$router.push(`/tasks/${task.id}`)"
+                  @delete="handleTaskDelete"
+                  @complete="handleTaskComplete"
                 />
               </div>
             </div>
@@ -199,6 +205,8 @@
                 <TaskCard 
                   :task="task" 
                   @click="$router.push(`/tasks/${task.id}`)"
+                  @delete="handleTaskDelete"
+                  @complete="handleTaskComplete"
                 />
               </div>
             </div>
@@ -326,6 +334,64 @@ const loadTasks = async () => {
     })
   } finally {
     loading.value = false
+  }
+}
+
+const handleTaskDelete = async (task) => {
+  try {
+    const result = await taskService.delete(task.id)
+    if (result.success) {
+      // Remove task from local array
+      const index = tasks.value.findIndex(t => t.id === task.id)
+      if (index !== -1) {
+        tasks.value.splice(index, 1)
+      }
+      
+      $q.notify({
+        type: 'positive',
+        message: `Task "${task.title}" deleted successfully`,
+        position: 'top'
+      })
+    } else {
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to delete task: ' + result.error
+      })
+    }
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Error deleting task: ' + error.message
+    })
+  }
+}
+
+const handleTaskComplete = async (task) => {
+  try {
+    const result = await taskService.complete(task.id)
+    if (result.success) {
+      // Update task in local array
+      const index = tasks.value.findIndex(t => t.id === task.id)
+      if (index !== -1) {
+        tasks.value[index] = { ...tasks.value[index], status: 'completed', completedAt: new Date() }
+      }
+      
+      $q.notify({
+        type: 'positive',
+        message: `Task "${task.title}" marked as complete`,
+        position: 'top'
+      })
+    } else {
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to complete task: ' + result.error
+      })
+    }
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Error completing task: ' + error.message
+    })
   }
 }
 

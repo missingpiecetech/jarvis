@@ -20,6 +20,11 @@ const routes = [
     children: [
       { 
         path: '', 
+        component: () => import('pages/ChatPage.vue'),
+        meta: { requiresAuth: true, requiresOnboarding: true }
+      },
+      { 
+        path: 'dashboard', 
         component: () => import('pages/DashboardPage.vue'),
         meta: { requiresAuth: true, requiresOnboarding: true }
       },

@@ -79,6 +79,13 @@ class TaskService {
   }
 
   /**
+   * Get task by ID (alias for get method for backward compatibility)
+   */
+  async getById(id) {
+    return this.get(id)
+  }
+
+  /**
    * Get all tasks for current user
    */
   async getAll(filters = {}) {

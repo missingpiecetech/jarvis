@@ -18,12 +18,42 @@
           </div>
         </div>
         <div class="col-auto q-ml-md">
-          <q-chip 
-            :color="getStatusColor(task.status)" 
-            text-color="white" 
-            size="sm"
-            :label="formatStatus(task.status)"
-          />
+          <div class="row items-center q-gutter-xs">
+            <q-chip 
+              :color="getStatusColor(task.status)" 
+              text-color="white" 
+              size="sm"
+              :label="formatStatus(task.status)"
+            />
+            <!-- Quick action buttons -->
+            <div class="task-actions">
+              <q-btn
+                v-if="task.status !== 'completed'"
+                flat
+                round
+                dense
+                size="sm"
+                icon="check"
+                color="positive"
+                @click.stop="$emit('complete', task)"
+                class="q-ml-xs"
+              >
+                <q-tooltip>Mark as complete</q-tooltip>
+              </q-btn>
+              <q-btn
+                flat
+                round
+                dense
+                size="sm"
+                icon="delete"
+                color="negative"
+                @click.stop="confirmDelete"
+                class="q-ml-xs"
+              >
+                <q-tooltip>Delete task</q-tooltip>
+              </q-btn>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -62,11 +92,37 @@
         </div>
       </div>
     </q-card-section>
+
+    <!-- Delete Confirmation Dialog -->
+    <q-dialog v-model="showDeleteDialog">
+      <q-card>
+        <q-card-section>
+          <div class="text-h6">Delete Task</div>
+        </q-card-section>
+        <q-card-section>
+          <div class="text-body1">
+            Are you sure you want to delete "<strong>{{ task.title }}</strong>"?
+          </div>
+          <div class="text-body2 text-grey-6 q-mt-sm">
+            This action cannot be undone.
+          </div>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat label="Cancel" @click="showDeleteDialog = false" />
+          <q-btn 
+            flat 
+            label="Delete" 
+            color="negative" 
+            @click="handleDelete"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-card>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { date } from 'quasar'
 
 const props = defineProps({
@@ -76,11 +132,22 @@ const props = defineProps({
   }
 })
 
-defineEmits(['click'])
+const emit = defineEmits(['click', 'delete', 'complete'])
+
+const showDeleteDialog = ref(false)
 
 const completedSubtasks = computed(() => {
   return props.task.subtasks?.filter(subtask => subtask.status === 'completed').length || 0
 })
+
+const confirmDelete = () => {
+  showDeleteDialog.value = true
+}
+
+const handleDelete = () => {
+  showDeleteDialog.value = false
+  emit('delete', props.task)
+}
 
 const getStatusColor = (status) => {
   switch (status) {
@@ -147,6 +214,17 @@ const getDueDateClass = (dueDate) => {
 .task-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.task-card:hover .task-actions {
+  opacity: 1;
+  visibility: visible;
+}
+
+.task-actions {
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
 }
 
 .border-left-urgent {

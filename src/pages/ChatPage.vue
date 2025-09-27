@@ -46,19 +46,59 @@
               :class="{
                 'message-user': message.role === 'user',
                 'message-assistant': message.role === 'assistant',
-                'message-error': message.isError
+                'message-error': message.isError,
+                'message-command': message.isCommand,
+                'message-welcome': message.isWelcome
               }"
             >
               <div class="message-avatar">
                 <q-avatar size="32px" :color="message.role === 'user' ? 'accent' : 'primary'">
-                  <q-icon :name="message.role === 'user' ? 'person' : 'smart_toy'" />
+                  <q-icon :name="getMessageIcon(message)" />
                 </q-avatar>
               </div>
               <div class="message-content">
                 <div class="message-text" v-html="formatMessageContent(message.content)"></div>
+                
+                <!-- Visual Elements for Commands -->
+                <div v-if="message.visualElements && message.visualElements.length > 0" class="message-visual-elements q-mt-sm">
+                  <div v-for="element in message.visualElements" :key="element.id" class="q-mb-sm">
+                    <ChatTaskCard v-if="element.type === 'task_card'" :task="element" />
+                  </div>
+                </div>
+                
+                <!-- Action Cards for Confirmation -->
+                <div v-if="message.actions && message.actions.length > 0" class="message-actions q-mt-sm">
+                  <div class="text-caption text-grey-6 q-mb-sm">
+                    Please review and confirm the following actions:
+                  </div>
+                  <ActionCard
+                    v-for="(action, index) in message.actions"
+                    :key="`action-${index}`"
+                    :action="action"
+                    @accept="acceptAction(action, message)"
+                    @reject="rejectAction(action, message)"
+                  />
+                  <div v-if="message.actions.length > 1" class="q-mt-sm">
+                    <q-btn
+                      color="positive"
+                      label="Accept All"
+                      size="sm"
+                      @click="acceptAllActions(message)"
+                    />
+                    <q-btn
+                      color="negative"
+                      label="Reject All"
+                      size="sm"
+                      class="q-ml-sm"
+                      @click="rejectAllActions(message)"
+                    />
+                  </div>
+                </div>
+                
                 <div class="message-meta text-caption text-grey-6">
                   {{ formatTime(message.timestamp) }}
                   <span v-if="message.model" class="q-ml-sm">• {{ message.model }}</span>
+                  <span v-if="message.isCommand" class="q-ml-sm">• Command</span>
                 </div>
               </div>
             </div>
@@ -85,16 +125,17 @@
       </div>
 
       <!-- Input Area -->
-      <div class="chat-input-container bg-grey-1 q-pa-md">
-        <div class="chat-input-wrapper">
+      <div class="chat-input-container bg-grey-1">
+        <div class="chat-input-wrapper q-pa-md">
           <q-input
             v-model="inputMessage"
-            placeholder="Type your message..."
+            placeholder="Type your message... (Shift+Enter for new line)"
             outlined
-            dense
+            type="textarea"
+            :rows="Math.min(inputMessage.split('\n').length || 1, 4)"
             autogrow
             :disable="isTyping"
-            @keydown.enter.prevent="handleEnterKey"
+            @keydown="handleKeyDown"
             class="chat-input"
           >
             <template v-slot:append>
@@ -112,7 +153,7 @@
         </div>
         
         <!-- AI Configuration Status -->
-        <div v-if="!aiConfigured" class="text-caption text-warning q-mt-sm">
+        <div v-if="!aiConfigured" class="text-caption text-warning q-pa-md q-pt-none">
           <q-icon name="warning" class="q-mr-xs" />
           AI service not configured. Please add your API key to use the assistant.
         </div>
@@ -158,9 +199,11 @@
 <script setup>
 import { ref, onMounted, nextTick, computed, watch } from 'vue'
 import { useQuasar } from 'quasar'
-import { conversationService, aiService } from 'src/services'
+import { conversationService, aiService, chatCommandService } from 'src/services'
 import { Message } from 'src/models'
 import { useAuthStore } from 'src/stores/auth'
+import ChatTaskCard from 'src/components/ChatTaskCard.vue'
+import ActionCard from 'src/components/ActionCard.vue'
 
 const $q = useQuasar()
 const authStore = useAuthStore()
@@ -176,10 +219,10 @@ const messagesContainer = ref(null)
 
 // AI Configuration
 const apiKey = ref('')
-const selectedModel = ref('gemini-1.5-flash')
+const selectedModel = ref('gemini-2.0-flash-lite')
 const modelOptions = [
-  { label: 'Gemini 1.5 Flash (Fast)', value: 'gemini-1.5-flash' },
-  { label: 'Gemini 1.5 Pro (Advanced)', value: 'gemini-1.5-pro' }
+  { label: 'Gemini 2.0 Flash Lite (Fast)', value: 'gemini-2.0-flash-lite' },
+  { label: 'Gemini 2.5 Pro (Advanced)', value: 'gemini-2.5-pro' }
 ]
 
 // Computed properties
@@ -209,8 +252,13 @@ async function loadActiveConversation() {
       currentConversationId.value = activeConversation.data.id
       conversationTitle.value = activeConversation.data.title
       messages.value = activeConversation.data.messages.map(msg => new Message(msg))
+      
+      // If conversation exists but has no messages, add welcome message
+      if (messages.value.length === 0) {
+        await addWelcomeMessage()
+      }
     } else {
-      // Start new conversation
+      // Start new conversation with welcome message
       await startNewConversation()
     }
   } catch (error) {
@@ -230,6 +278,9 @@ async function startNewConversation() {
       currentConversationId.value = result.data.id
       conversationTitle.value = result.data.title || 'New Conversation'
       messages.value = []
+      
+      // Add welcome message when starting a new conversation
+      await addWelcomeMessage()
     } else {
       $q.notify({
         type: 'negative',
@@ -238,6 +289,33 @@ async function startNewConversation() {
     }
   } catch (error) {
     console.error('Error starting new conversation:', error)
+  }
+}
+
+/**
+ * Add welcome message to new conversations
+ */
+async function addWelcomeMessage() {
+  const welcomeMessage = new Message({
+    role: 'assistant',
+    content: `👋 Welcome to Jarvis, ${authStore.user?.name || 'there'}! I'm your personal AI assistant.
+
+I can help you with:
+• **Task Management**: "Create a task to call John tomorrow" or "List my high priority tasks"
+• **Event Scheduling**: "Schedule a meeting with the team at 3pm Friday"
+• **Multiple Tasks**: "I need to buy groceries, call mom, and finish the report by Friday"
+• **General Questions**: Ask me anything you need help with!
+
+What would you like to do today?`,
+    timestamp: new Date(),
+    isWelcome: true
+  })
+  
+  messages.value.push(welcomeMessage)
+  
+  // Save welcome message to conversation
+  if (currentConversationId.value) {
+    await conversationService.addMessage(currentConversationId.value, welcomeMessage)
   }
 }
 
@@ -268,30 +346,77 @@ async function sendMessage() {
   isTyping.value = true
   
   try {
-    // Get conversation context with user context
-    const contextMessages = await aiService.getConversationContext(
-      messages.value, 
-      10, 
-      authStore.user?.id
+    // Process message with new action-based system
+    const actionResult = await chatCommandService.processMessage(
+      userMessage, 
+      authStore.user?.id, 
+      currentConversationId.value
     )
     
-    // Send to AI with context extraction enabled
-    const aiResponse = await aiService.sendMessage(contextMessages, {
-      model: selectedModel.value,
-      userId: authStore.user?.id,
-      conversationId: currentConversationId.value,
-      extractContext: true
-    })
+    let assistantContent = ''
+    let assistantMessage
+    let isError = false
     
-    // Create assistant message
-    const assistantMessage = new Message({
-      role: 'assistant',
-      content: aiResponse.content,
-      timestamp: new Date(),
-      isError: !aiResponse.success,
-      model: aiResponse.model,
-      tokens: aiResponse.usage?.totalTokens
-    })
+    if (actionResult && actionResult.success && actionResult.actions.length > 0) {
+      // Actions were identified - show confirmation interface
+      assistantContent = actionResult.response
+      
+      assistantMessage = new Message({
+        role: 'assistant',
+        content: assistantContent,
+        timestamp: new Date(),
+        isCommand: true,
+        actions: actionResult.actions,
+        needsConfirmation: actionResult.needsConfirmation
+      })
+      
+    } else if (actionResult && actionResult.response) {
+      // No actions but got a response (like answering questions)
+      assistantContent = actionResult.response
+      
+      assistantMessage = new Message({
+        role: 'assistant',
+        content: assistantContent,
+        timestamp: new Date(),
+        isCommand: false
+      })
+      
+    } else {
+      // Not a recognized command, proceed with normal AI processing
+      // Get conversation context with enhanced task/event context
+      let contextMessages = await aiService.getConversationContext(
+        messages.value, 
+        10, 
+        authStore.user?.id
+      )
+      
+      // Send to AI service
+      const aiResponse = await aiService.sendMessage(
+        contextMessages,
+        {
+          model: selectedModel.value,
+          temperature: 0.7,
+          maxTokens: 2048,
+          userId: authStore.user?.id,
+          conversationId: currentConversationId.value
+        }
+      )
+      
+      if (aiResponse.success) {
+        assistantContent = aiResponse.content
+      } else {
+        assistantContent = 'I apologize, but I encountered an error processing your request. Please try again.'
+        isError = true
+      }
+      
+      assistantMessage = new Message({
+        role: 'assistant',
+        content: assistantContent,
+        timestamp: new Date(),
+        model: selectedModel.value,
+        isError
+      })
+    }
     
     messages.value.push(assistantMessage)
     
@@ -310,12 +435,8 @@ async function sendMessage() {
       }
     }
     
-    if (!aiResponse.success) {
-      $q.notify({
-        type: 'negative',
-        message: 'AI response failed: ' + aiResponse.error
-      })
-    }
+    // Scroll to bottom
+    nextTick(() => scrollToBottom())
     
   } catch (error) {
     console.error('Error sending message:', error)
@@ -332,7 +453,7 @@ async function sendMessage() {
     
     $q.notify({
       type: 'negative',
-      message: 'Failed to get AI response'
+      message: 'Failed to process your request'
     })
   } finally {
     isTyping.value = false
@@ -340,17 +461,35 @@ async function sendMessage() {
 }
 
 /**
- * Handle Enter key in input
+ * Handle keyboard input in textarea
  */
-function handleEnterKey(event) {
-  if (!event.shiftKey) {
-    sendMessage()
+function handleKeyDown(event) {
+  if (event.key === 'Enter') {
+    if (event.shiftKey) {
+      // Shift+Enter: allow new line (default behavior)
+      return
+    } else {
+      // Enter alone: send message
+      event.preventDefault()
+      sendMessage()
+    }
   }
 }
 
 /**
- * Format message content for display
+ * Get appropriate icon for message
  */
+function getMessageIcon(message) {
+  if (message.role === 'user') {
+    return 'person'
+  } else if (message.isWelcome) {
+    return 'waving_hand'
+  } else if (message.isCommand) {
+    return 'terminal'
+  } else {
+    return 'smart_toy'
+  }
+}
 function formatMessageContent(content) {
   // Basic markdown-like formatting
   return content
@@ -412,6 +551,140 @@ function saveSettings() {
     message: 'Settings saved successfully'
   })
 }
+
+/**
+ * Accept an individual action
+ */
+async function acceptAction(action, message) {
+  try {
+    isTyping.value = true
+    
+    // Execute the action
+    const results = await chatCommandService.executeActions([action], authStore.user?.id)
+    
+    // Update the message to show action was accepted
+    const actionIndex = message.actions.findIndex(a => a === action)
+    if (actionIndex !== -1) {
+      message.actions[actionIndex].status = 'accepted'
+    }
+    
+    // Add result message
+    const result = results[0]
+    const resultMessage = new Message({
+      role: 'assistant',
+      content: result.success ? 
+        `✅ Action completed successfully` : 
+        `❌ Action failed: ${result.result?.error || 'Unknown error'}`,
+      timestamp: new Date(),
+      isCommand: true
+    })
+    
+    messages.value.push(resultMessage)
+    
+    if (result.success) {
+      $q.notify({
+        type: 'positive',
+        message: 'Action completed successfully'
+      })
+    }
+    
+    nextTick(() => scrollToBottom())
+  } catch (error) {
+    console.error('Error executing action:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to execute action'
+    })
+  } finally {
+    isTyping.value = false
+  }
+}
+
+/**
+ * Reject an individual action
+ */
+async function rejectAction(action, message) {
+  // Update the message to show action was rejected
+  const actionIndex = message.actions.findIndex(a => a === action)
+  if (actionIndex !== -1) {
+    message.actions[actionIndex].status = 'rejected'
+  }
+  
+  $q.notify({
+    type: 'info',
+    message: 'Action rejected'
+  })
+}
+
+/**
+ * Accept all actions in a message
+ */
+async function acceptAllActions(message) {
+  try {
+    isTyping.value = true
+    
+    // Filter out already processed actions
+    const pendingActions = message.actions.filter(a => !a.status)
+    
+    if (pendingActions.length === 0) return
+    
+    // Execute all actions
+    const results = await chatCommandService.executeActions(pendingActions, authStore.user?.id)
+    
+    // Update action statuses
+    pendingActions.forEach(action => {
+      const actionIndex = message.actions.findIndex(a => a === action)
+      if (actionIndex !== -1) {
+        message.actions[actionIndex].status = 'accepted'
+      }
+    })
+    
+    // Add result message
+    const successCount = results.filter(r => r.success).length
+    const totalCount = results.length
+    
+    const resultMessage = new Message({
+      role: 'assistant',
+      content: `✅ Completed ${successCount} of ${totalCount} actions`,
+      timestamp: new Date(),
+      isCommand: true
+    })
+    
+    messages.value.push(resultMessage)
+    
+    $q.notify({
+      type: 'positive',
+      message: `Completed ${successCount} of ${totalCount} actions`
+    })
+    
+    nextTick(() => scrollToBottom())
+  } catch (error) {
+    console.error('Error executing actions:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to execute actions'
+    })
+  } finally {
+    isTyping.value = false
+  }
+}
+
+/**
+ * Reject all actions in a message
+ */
+async function rejectAllActions(message) {
+  // Update all action statuses
+  message.actions.forEach(action => {
+    if (!action.status) {
+      action.status = 'rejected'
+    }
+  })
+  
+  $q.notify({
+    type: 'info',
+    message: 'All actions rejected'
+  })
+}
 </script>
 
 <style lang="scss" scoped>
@@ -419,18 +692,32 @@ function saveSettings() {
   height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .chat-container {
   height: 100%;
   display: flex;
   flex-direction: column;
+  min-height: 0; // Allow flexing
 }
 
 .messages-container {
   flex: 1;
   overflow-y: auto;
   background: #fafafa;
+  min-height: 0; // Allow container to shrink
+}
+
+.chat-input-container {
+  flex-shrink: 0; // Don't allow input to shrink
+  border-top: 1px solid #e0e0e0;
+}
+
+.chat-input {
+  .q-field__control {
+    min-height: 48px;
+  }
 }
 
 .message-wrapper {
@@ -470,6 +757,20 @@ function saveSettings() {
     .message-content {
       background: #ffebee;
       border-color: #f44336;
+    }
+  }
+  
+  &.message-command {
+    .message-content {
+      background: #f3e5f5;
+      border-color: #9c27b0;
+    }
+  }
+  
+  &.message-welcome {
+    .message-content {
+      background: #e8f5e8;
+      border-color: #4caf50;
     }
   }
 }
