@@ -5,6 +5,7 @@
 
 export { Task } from './Task.js'
 export { Event } from './Event.js'
+export { ProposedEvent } from './ProposedEvent.js'
 export { Document } from './Document.js'
 export { ConversationLog, Message } from './ConversationLog.js'
 export { UserPreferences } from './UserPreferences.js'
@@ -13,6 +14,7 @@ export { UserContext, TaskSuggestion, EventSuggestion } from './UserContext.js'
 // Re-export for convenience
 export * from './Task.js'
 export * from './Event.js'
+export * from './ProposedEvent.js'
 export * from './Document.js'
 export * from './ConversationLog.js'
 export * from './UserPreferences.js'

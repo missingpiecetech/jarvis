@@ -51,6 +51,20 @@
       </q-card>
     </div>
 
+    <!-- AI Event Suggestions -->
+    <div class="q-mt-lg">
+      <ProposedEventsSection
+        :proposed-events="proposedEvents"
+        :loading="searchingEvents"
+        :loading-more="loadingMoreEvents"
+        :has-more="hasMoreProposedEvents"
+        @search="showEventSearch = true"
+        @accept="acceptProposedEvent"
+        @decline="declineProposedEvent"
+        @load-more="loadMoreProposedEvents"
+      />
+    </div>
+
     <!-- Event Form Dialog -->
     <EventFormDialog
       v-model="showEventForm"
@@ -66,6 +80,12 @@
       @edit="onEventEdit"
       @delete="onEventDeleteConfirm"
     />
+
+    <!-- Event Search Dialog -->
+    <EventSearchDialog
+      v-model="showEventSearch"
+      @search="searchForEvents"
+    />
   </q-page>
 </template>
 
@@ -74,7 +94,10 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import EventFormDialog from 'src/components/EventFormDialog.vue'
 import EventDetailDialog from 'src/components/EventDetailDialog.vue'
+import ProposedEventsSection from 'src/components/ProposedEventsSection.vue'
+import EventSearchDialog from 'src/components/EventSearchDialog.vue'
 import { eventService } from 'src/services/EventService'
+import { aiEventSearchService } from 'src/services/AIEventSearchService'
 import { Event } from 'src/models'
 
 const $q = useQuasar()
@@ -86,6 +109,13 @@ const selectedEvent = ref(null)
 const showEventForm = ref(false)
 const showEventDetail = ref(false)
 const isEditing = ref(false)
+
+// Proposed events data
+const proposedEvents = ref([])
+const searchingEvents = ref(false)
+const loadingMoreEvents = ref(false)
+const hasMoreProposedEvents = ref(false)
+const showEventSearch = ref(false)
 
 // Methods
 const loadEvents = async () => {
@@ -232,6 +262,135 @@ const getEventColor = (event) => {
   }
 }
 
+// Proposed Events Methods
+const loadProposedEvents = async () => {
+  try {
+    const result = await aiEventSearchService.getAll({ status: 'pending' })
+    if (result.success) {
+      proposedEvents.value = result.data
+    }
+  } catch (error) {
+    console.error('Error loading proposed events:', error)
+  }
+}
+
+const searchForEvents = async (criteria) => {
+  searchingEvents.value = true
+  try {
+    const result = await aiEventSearchService.searchEvents(criteria)
+    
+    if (result.success) {
+      await loadProposedEvents() // Refresh the list
+      $q.notify({
+        type: 'positive',
+        message: `Found ${result.total} event suggestions${result.filtered > 0 ? ` (${result.filtered} duplicates filtered)` : ''}`,
+        position: 'top'
+      })
+      showEventSearch.value = false
+    } else {
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to search events: ' + result.error,
+        position: 'top'
+      })
+    }
+  } catch (error) {
+    console.error('Error searching events:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Error searching for events',
+      position: 'top'
+    })
+  } finally {
+    searchingEvents.value = false
+  }
+}
+
+const acceptProposedEvent = async (proposedEvent, addRecurring = true) => {
+  try {
+    const result = await aiEventSearchService.acceptEvent(proposedEvent.id, addRecurring)
+    
+    if (result.success) {
+      // Add the event to the regular calendar
+      const saveResult = await eventService.create(result.data)
+      
+      if (saveResult.success) {
+        await Promise.all([
+          loadEvents(),
+          loadProposedEvents()
+        ])
+        
+        const message = result.isRecurring && addRecurring 
+          ? 'Recurring event added to your calendar'
+          : 'Event added to your calendar'
+          
+        $q.notify({
+          type: 'positive',
+          message,
+          position: 'top'
+        })
+      } else {
+        $q.notify({
+          type: 'negative',
+          message: 'Failed to add event to calendar: ' + saveResult.error,
+          position: 'top'
+        })
+      }
+    } else {
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to accept event: ' + result.error,
+        position: 'top'
+      })
+    }
+  } catch (error) {
+    console.error('Error accepting proposed event:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Error accepting event',
+      position: 'top'
+    })
+  }
+}
+
+const declineProposedEvent = async (proposedEvent) => {
+  try {
+    const result = await aiEventSearchService.declineEvent(proposedEvent.id)
+    
+    if (result.success) {
+      await loadProposedEvents()
+      $q.notify({
+        type: 'info',
+        message: 'Event declined and archived',
+        position: 'top'
+      })
+    } else {
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to decline event: ' + result.error,
+        position: 'top'
+      })
+    }
+  } catch (error) {
+    console.error('Error declining proposed event:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Error declining event',
+      position: 'top'
+    })
+  }
+}
+
+const loadMoreProposedEvents = async () => {
+  // For now, this is a placeholder
+  // In a real implementation, you would load more events with pagination
+  $q.notify({
+    type: 'info',
+    message: 'Load more functionality would be implemented here',
+    position: 'top'
+  })
+}
+
 // Watch for dialog closes to reset state
 watch(showEventForm, (newVal) => {
   if (!newVal) {
@@ -249,6 +408,7 @@ watch(showEventDetail, (newVal) => {
 // Lifecycle
 onMounted(() => {
   loadEvents()
+  loadProposedEvents()
 })
 </script>
 

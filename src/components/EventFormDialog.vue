@@ -195,6 +195,97 @@
             </div>
           </div>
 
+          <!-- Recurrence -->
+          <div class="text-h6 q-mt-lg q-mb-md">Recurrence</div>
+          <div class="row q-gutter-md">
+            <div class="col-12">
+              <q-toggle
+                v-model="formData.isRecurring"
+                label="Recurring event"
+                color="primary"
+              />
+            </div>
+          </div>
+
+          <div v-if="formData.isRecurring" class="q-mt-md">
+            <div class="row q-gutter-md">
+              <div class="col-md-6 col-sm-12">
+                <q-select
+                  v-model="formData.recurrenceType"
+                  label="Repeat"
+                  outlined
+                  :options="recurrenceOptions"
+                  map-options
+                  emit-value
+                />
+              </div>
+              <div class="col-md-6 col-sm-12">
+                <q-input
+                  v-model.number="formData.recurrenceInterval"
+                  label="Every"
+                  outlined
+                  type="number"
+                  min="1"
+                  :suffix="getRecurrenceIntervalSuffix()"
+                />
+              </div>
+            </div>
+
+            <div class="row q-gutter-md q-mt-md" v-if="formData.recurrenceType === 'weekly'">
+              <div class="col-12">
+                <q-select
+                  v-model="formData.recurrenceDays"
+                  label="Repeat on"
+                  outlined
+                  multiple
+                  :options="weekDayOptions"
+                  use-chips
+                />
+              </div>
+            </div>
+
+            <div class="row q-gutter-md q-mt-md">
+              <div class="col-md-6 col-sm-12">
+                <q-select
+                  v-model="formData.recurrenceEnd"
+                  label="End"
+                  outlined
+                  :options="recurrenceEndOptions"
+                  map-options
+                  emit-value
+                />
+              </div>
+              <div class="col-md-6 col-sm-12" v-if="formData.recurrenceEnd === 'on'">
+                <q-input
+                  v-model="formData.recurrenceEndDate"
+                  label="End Date"
+                  outlined
+                >
+                  <template v-slot:append>
+                    <q-icon name="event" class="cursor-pointer">
+                      <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                        <q-date v-model="formData.recurrenceEndDate" mask="YYYY-MM-DD">
+                          <div class="row items-center justify-end">
+                            <q-btn v-close-popup label="Close" color="primary" flat />
+                          </div>
+                        </q-date>
+                      </q-popup-proxy>
+                    </q-icon>
+                  </template>
+                </q-input>
+              </div>
+              <div class="col-md-6 col-sm-12" v-if="formData.recurrenceEnd === 'after'">
+                <q-input
+                  v-model.number="formData.recurrenceCount"
+                  label="Number of occurrences"
+                  outlined
+                  type="number"
+                  min="1"
+                />
+              </div>
+            </div>
+          </div>
+
           <!-- Reminders -->
           <div class="text-h6 q-mt-lg q-mb-md">Reminders</div>
           <div v-for="(reminder, index) in formData.reminders" :key="index" class="row q-gutter-md items-end q-mb-sm">
@@ -275,7 +366,14 @@ const formData = ref({
   status: 'confirmed',
   visibility: 'private',
   color: '#1976d2',
-  reminders: []
+  reminders: [],
+  isRecurring: false,
+  recurrenceType: 'daily',
+  recurrenceInterval: 1,
+  recurrenceDays: [],
+  recurrenceEnd: 'never',
+  recurrenceEndDate: '',
+  recurrenceCount: 10
 })
 
 // Options
@@ -288,6 +386,23 @@ const statusOptions = [
 const visibilityOptions = [
   { label: 'Private', value: 'private' },
   { label: 'Public', value: 'public' }
+]
+
+const recurrenceOptions = [
+  { label: 'Daily', value: 'daily' },
+  { label: 'Weekly', value: 'weekly' },
+  { label: 'Monthly', value: 'monthly' },
+  { label: 'Yearly', value: 'yearly' }
+]
+
+const recurrenceEndOptions = [
+  { label: 'Never', value: 'never' },
+  { label: 'On date', value: 'on' },
+  { label: 'After', value: 'after' }
+]
+
+const weekDayOptions = [
+  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 ]
 
 // Computed
@@ -313,7 +428,14 @@ const resetForm = () => {
     status: 'confirmed',
     visibility: 'private',
     color: '#1976d2',
-    reminders: []
+    reminders: [],
+    isRecurring: false,
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    recurrenceDays: [],
+    recurrenceEnd: 'never',
+    recurrenceEndDate: '',
+    recurrenceCount: 10
   }
 }
 
@@ -323,6 +445,8 @@ const loadEventData = (event) => {
     return
   }
 
+  const recurrence = event.recurrence || {}
+  
   formData.value = {
     title: event.title || '',
     description: event.description || '',
@@ -335,7 +459,14 @@ const loadEventData = (event) => {
     status: event.status || 'confirmed',
     visibility: event.visibility || 'private',
     color: event.color || '#1976d2',
-    reminders: [...(event.reminders || [])]
+    reminders: [...(event.reminders || [])],
+    isRecurring: !!recurrence.type,
+    recurrenceType: recurrence.type || 'daily',
+    recurrenceInterval: recurrence.interval || 1,
+    recurrenceDays: recurrence.days || [],
+    recurrenceEnd: recurrence.end?.type || 'never',
+    recurrenceEndDate: recurrence.end?.date || '',
+    recurrenceCount: recurrence.end?.count || 10
   }
 }
 
@@ -345,6 +476,23 @@ const addReminder = () => {
 
 const removeReminder = (index) => {
   formData.value.reminders.splice(index, 1)
+}
+
+const getRecurrenceIntervalSuffix = () => {
+  const type = formData.value.recurrenceType
+  const interval = formData.value.recurrenceInterval
+  
+  if (interval === 1) {
+    return type.slice(0, -2) // Remove 'ly' (daily -> day, weekly -> week, etc.)
+  } else {
+    switch (type) {
+      case 'daily': return 'days'
+      case 'weekly': return 'weeks'
+      case 'monthly': return 'months'
+      case 'yearly': return 'years'
+      default: return ''
+    }
+  }
 }
 
 const validateForm = () => {
@@ -424,7 +572,17 @@ const onSubmit = async () => {
       status: formData.value.status,
       visibility: formData.value.visibility,
       color: formData.value.color,
-      reminders: formData.value.reminders
+      reminders: formData.value.reminders,
+      recurrence: formData.value.isRecurring ? {
+        type: formData.value.recurrenceType,
+        interval: formData.value.recurrenceInterval,
+        days: formData.value.recurrenceType === 'weekly' ? formData.value.recurrenceDays : [],
+        end: formData.value.recurrenceEnd === 'never' ? null : {
+          type: formData.value.recurrenceEnd,
+          date: formData.value.recurrenceEnd === 'on' ? formData.value.recurrenceEndDate : null,
+          count: formData.value.recurrenceEnd === 'after' ? formData.value.recurrenceCount : null
+        }
+      } : null
     }
 
     emit('save', eventData)
