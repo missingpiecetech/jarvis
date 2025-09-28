@@ -9,9 +9,9 @@
         </p>
       </div>
       <div class="col-auto">
-        <q-btn 
-          color="primary" 
-          icon="add" 
+        <q-btn
+          color="primary"
+          icon="add"
           label="New Task"
           @click="$router.push('/tasks/new')"
           unelevated
@@ -33,8 +33,16 @@
         >
           <q-tab name="all" label="All Tasks" :badge="tasks?.length || 0" />
           <q-tab name="pending" label="To Do" :badge="todoTasks?.length || 0" />
-          <q-tab name="in-progress" label="In Progress" :badge="inProgressTasks?.length || 0" />
-          <q-tab name="completed" label="Completed" :badge="completedTasks?.length || 0" />
+          <q-tab
+            name="in-progress"
+            label="In Progress"
+            :badge="inProgressTasks?.length || 0"
+          />
+          <q-tab
+            name="completed"
+            label="Completed"
+            :badge="completedTasks?.length || 0"
+          />
         </q-tabs>
       </div>
 
@@ -127,18 +135,24 @@
               <q-icon name="task_alt" size="64px" color="grey-4" />
               <div class="text-h6 text-grey-6 q-mt-md">No tasks found</div>
               <div class="text-body2 text-grey-5">
-                {{ searchQuery ? 'Try adjusting your search or filters' : 'Create your first task to get started' }}
+                {{
+                  searchQuery
+                    ? "Try adjusting your search or filters"
+                    : "Create your first task to get started"
+                }}
               </div>
             </div>
             <div v-else class="row q-gutter-md">
-              <div 
-                v-for="task in filteredTasks" 
-                :key="task.id" 
+              <div
+                v-for="task in filteredTasks"
+                :key="task.id"
                 class="col-12 col-md-6 col-lg-4"
               >
-                <TaskCard 
-                  :task="task" 
+                <TaskCard
+                  :task="task"
                   @click="$router.push(`/tasks/${task.id}`)"
+                  @delete="handleTaskDelete"
+                  @complete="handleTaskComplete"
                 />
               </div>
             </div>
@@ -146,19 +160,28 @@
 
           <!-- To Do Tasks -->
           <q-tab-panel name="pending">
-            <div v-if="filteredTasks.filter(t => t.status === 'pending').length === 0" class="text-center q-py-xl">
+            <div
+              v-if="
+                filteredTasks.filter((t) => t.status === 'pending').length === 0
+              "
+              class="text-center q-py-xl"
+            >
               <q-icon name="assignment" size="64px" color="grey-4" />
               <div class="text-h6 text-grey-6 q-mt-md">No to-do tasks</div>
             </div>
             <div v-else class="row q-gutter-md">
-              <div 
-                v-for="task in filteredTasks.filter(t => t.status === 'pending')" 
-                :key="task.id" 
+              <div
+                v-for="task in filteredTasks.filter(
+                  (t) => t.status === 'pending'
+                )"
+                :key="task.id"
                 class="col-12 col-md-6 col-lg-4"
               >
-                <TaskCard 
-                  :task="task" 
+                <TaskCard
+                  :task="task"
                   @click="$router.push(`/tasks/${task.id}`)"
+                  @delete="handleTaskDelete"
+                  @complete="handleTaskComplete"
                 />
               </div>
             </div>
@@ -166,19 +189,31 @@
 
           <!-- In Progress Tasks -->
           <q-tab-panel name="in-progress">
-            <div v-if="filteredTasks.filter(t => t.status === 'in-progress').length === 0" class="text-center q-py-xl">
+            <div
+              v-if="
+                filteredTasks.filter((t) => t.status === 'in-progress')
+                  .length === 0
+              "
+              class="text-center q-py-xl"
+            >
               <q-icon name="pending" size="64px" color="grey-4" />
-              <div class="text-h6 text-grey-6 q-mt-md">No tasks in progress</div>
+              <div class="text-h6 text-grey-6 q-mt-md">
+                No tasks in progress
+              </div>
             </div>
             <div v-else class="row q-gutter-md">
-              <div 
-                v-for="task in filteredTasks.filter(t => t.status === 'in-progress')" 
-                :key="task.id" 
+              <div
+                v-for="task in filteredTasks.filter(
+                  (t) => t.status === 'in-progress'
+                )"
+                :key="task.id"
                 class="col-12 col-md-6 col-lg-4"
               >
-                <TaskCard 
-                  :task="task" 
+                <TaskCard
+                  :task="task"
                   @click="$router.push(`/tasks/${task.id}`)"
+                  @delete="handleTaskDelete"
+                  @complete="handleTaskComplete"
                 />
               </div>
             </div>
@@ -186,19 +221,29 @@
 
           <!-- Completed Tasks -->
           <q-tab-panel name="completed">
-            <div v-if="filteredTasks.filter(t => t.status === 'completed').length === 0" class="text-center q-py-xl">
+            <div
+              v-if="
+                filteredTasks.filter((t) => t.status === 'completed').length ===
+                0
+              "
+              class="text-center q-py-xl"
+            >
               <q-icon name="task_alt" size="64px" color="grey-4" />
               <div class="text-h6 text-grey-6 q-mt-md">No completed tasks</div>
             </div>
             <div v-else class="row q-gutter-md">
-              <div 
-                v-for="task in filteredTasks.filter(t => t.status === 'completed')" 
-                :key="task.id" 
+              <div
+                v-for="task in filteredTasks.filter(
+                  (t) => t.status === 'completed'
+                )"
+                :key="task.id"
                 class="col-12 col-md-6 col-lg-4"
               >
-                <TaskCard 
-                  :task="task" 
+                <TaskCard
+                  :task="task"
                   @click="$router.push(`/tasks/${task.id}`)"
+                  @delete="handleTaskDelete"
+                  @complete="handleTaskComplete"
                 />
               </div>
             </div>
@@ -210,127 +255,194 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useQuasar } from 'quasar'
-import { taskService } from 'src/services'
-import { Task } from 'src/models'
-import TaskCard from 'src/components/TaskCard.vue'
+import { ref, computed, onMounted, onActivated } from "vue";
+import { useQuasar } from "quasar";
+import { taskService } from "src/services";
+import { Task } from "src/models";
+import TaskCard from "src/components/TaskCard.vue";
 
-const $q = useQuasar()
+const $q = useQuasar();
 
 // Reactive data
-const activeTab = ref('all')
-const searchQuery = ref('')
-const priorityFilter = ref(null)
-const sortBy = ref('dueDate')
-const tasks = ref([])
-const loading = ref(false)
+const activeTab = ref("all");
+const searchQuery = ref("");
+const priorityFilter = ref(null);
+const sortBy = ref("dueDate");
+const tasks = ref([]);
+const loading = ref(false);
 
 // Filter and sort options
 const priorityOptions = [
-  { label: 'High Priority', value: 'high' },
-  { label: 'Medium Priority', value: 'medium' },
-  { label: 'Low Priority', value: 'low' },
-  { label: 'Urgent Priority', value: 'urgent' }
-]
+  { label: "High Priority", value: "high" },
+  { label: "Medium Priority", value: "medium" },
+  { label: "Low Priority", value: "low" },
+  { label: "Urgent Priority", value: "urgent" },
+];
 
 const sortOptions = [
-  { label: 'Due Date', value: 'dueDate' },
-  { label: 'Priority', value: 'priority' },
-  { label: 'Value', value: 'value' },
-  { label: 'Created Date', value: 'createdAt' },
-  { label: 'Updated Date', value: 'updatedAt' }
-]
+  { label: "Due Date", value: "dueDate" },
+  { label: "Priority", value: "priority" },
+  { label: "Value", value: "value" },
+  { label: "Created Date", value: "createdAt" },
+  { label: "Updated Date", value: "updatedAt" },
+];
 
 // Computed properties
 const todoTasks = computed(() => {
-  return tasks.value.filter(task => task.status === 'pending')
-})
+  return tasks.value.filter((task) => task.status === "pending");
+});
 
 const inProgressTasks = computed(() => {
-  return tasks.value.filter(task => task.status === 'in_progress')
-})
+  return tasks.value.filter((task) => task.status === "in_progress");
+});
 
 const completedTasks = computed(() => {
-  return tasks.value.filter(task => task.status === 'completed')
-})
+  return tasks.value.filter((task) => task.status === "completed");
+});
 
 const highPriorityTasks = computed(() => {
-  return tasks.value.filter(task => task.priority === 'high' || task.priority === 'urgent')
-})
+  return tasks.value.filter(
+    (task) => task.priority === "high" || task.priority === "urgent"
+  );
+});
 
 const filteredTasks = computed(() => {
-  let filtered = [...(tasks.value || [])]
+  let filtered = [...(tasks.value || [])];
 
   // Apply search filter
   if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    filtered = filtered.filter(task => 
-      task.title.toLowerCase().includes(query) ||
-      task.description.toLowerCase().includes(query)
-    )
+    const query = searchQuery.value.toLowerCase();
+    filtered = filtered.filter(
+      (task) =>
+        task.title.toLowerCase().includes(query) ||
+        task.description.toLowerCase().includes(query)
+    );
   }
 
   // Apply priority filter
   if (priorityFilter.value) {
-    filtered = filtered.filter(task => task.priority === priorityFilter.value)
+    filtered = filtered.filter(
+      (task) => task.priority === priorityFilter.value
+    );
   }
 
   // Apply sorting
   filtered.sort((a, b) => {
     switch (sortBy.value) {
-      case 'dueDate':
-        if (!a.dueDate && !b.dueDate) return 0
-        if (!a.dueDate) return 1
-        if (!b.dueDate) return -1
-        return new Date(a.dueDate) - new Date(b.dueDate)
-      
-      case 'priority':
-        const priorityOrder = { urgent: 4, high: 3, medium: 2, low: 1 }
-        return priorityOrder[b.priority] - priorityOrder[a.priority]
-      
-      case 'value':
-        return b.value - a.value
-      
-      case 'createdAt':
-        return new Date(b.createdAt) - new Date(a.createdAt)
-      
-      case 'updatedAt':
-        return new Date(b.updatedAt) - new Date(a.updatedAt)
-      
-      default:
-        return 0
-    }
-  })
+      case "dueDate":
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return new Date(a.dueDate) - new Date(b.dueDate);
 
-  return filtered
-})
+      case "priority":
+        const priorityOrder = { urgent: 4, high: 3, medium: 2, low: 1 };
+        return priorityOrder[b.priority] - priorityOrder[a.priority];
+
+      case "value":
+        return b.value - a.value;
+
+      case "createdAt":
+        return new Date(b.createdAt) - new Date(a.createdAt);
+
+      case "updatedAt":
+        return new Date(b.updatedAt) - new Date(a.updatedAt);
+
+      default:
+        return 0;
+    }
+  });
+
+  return filtered;
+});
 
 // Methods
 const loadTasks = async () => {
-  loading.value = true
+  loading.value = true;
   try {
-    const result = await taskService.getAll()
+    const result = await taskService.getAll();
     if (result.success) {
-      tasks.value = result.data
+      tasks.value = result.data;
     } else {
       $q.notify({
-        type: 'negative',
-        message: 'Failed to load tasks: ' + result.error
-      })
+        type: "negative",
+        message: "Failed to load tasks: " + result.error,
+      });
     }
   } catch (error) {
     $q.notify({
-      type: 'negative',
-      message: 'Error loading tasks: ' + error.message
-    })
+      type: "negative",
+      message: "Error loading tasks: " + error.message,
+    });
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
+
+const handleTaskDelete = async (task) => {
+  try {
+    const result = await taskService.delete(task.id);
+    if (result.success) {
+      // Remove task from local array
+      const index = tasks.value.findIndex((t) => t.id === task.id);
+      if (index !== -1) {
+        tasks.value.splice(index, 1);
+      }
+
+      $q.notify({
+        type: "positive",
+        message: `Task "${task.title}" deleted successfully`,
+        position: "top",
+      });
+    } else {
+      $q.notify({
+        type: "negative",
+        message: "Failed to delete task: " + result.error,
+      });
+    }
+  } catch (error) {
+    $q.notify({
+      type: "negative",
+      message: "Error deleting task: " + error.message,
+    });
+  }
+};
+
+const handleTaskComplete = async (task) => {
+  try {
+    const result = await taskService.complete(task.id);
+    if (result.success) {
+      // Update task in local array
+      const index = tasks.value.findIndex((t) => t.id === task.id);
+      if (index !== -1) {
+        tasks.value[index] = {
+          ...tasks.value[index],
+          status: "completed",
+          completedAt: new Date(),
+        };
+      }
+
+      $q.notify({
+        type: "positive",
+        message: `Task "${task.title}" marked as complete`,
+        position: "top",
+      });
+    } else {
+      $q.notify({
+        type: "negative",
+        message: "Failed to complete task: " + result.error,
+      });
+    }
+  } catch (error) {
+    $q.notify({
+      type: "negative",
+      message: "Error completing task: " + error.message,
+    });
+  }
+};
 
 // Lifecycle
 onMounted(() => {
-  loadTasks()
-})
+  loadTasks();
+});
 </script>

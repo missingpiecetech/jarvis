@@ -13,6 +13,7 @@
     "postinstall": "quasar prepare"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.21.0",
     "@quasar/extras": "^1.16.4",
     "axios": "^1.12.2",
     "eslint": "^9.36.0",

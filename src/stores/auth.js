@@ -18,6 +18,8 @@ export const useAuthStore = defineStore('auth', () => {
   const userPreferences = ref(null)
   const isAuthenticated = computed(() => !!user.value)
   const hasCompletedOnboarding = computed(() => user.value?.onboardingCompleted || false)
+  const isInitialized = ref(false)
+  const initializationPromise = ref(null)
 
   // Initialize services when store is created
   const initializeServices = async () => {
@@ -48,7 +50,21 @@ export const useAuthStore = defineStore('auth', () => {
         localStorage.removeItem('jarvis_user')
       }
     }
+    isInitialized.value = true
   }
+
+  // Initialize the store
+  const initialize = async () => {
+    if (!initializationPromise.value) {
+      initializationPromise.value = Promise.resolve()
+        .then(() => initializeServices())
+        .then(() => loadUserFromStorage())
+    }
+    return initializationPromise.value
+  }
+
+  // Auto-initialize when store is created
+  initialize()
 
   // Load user preferences
   const loadUserPreferences = async () => {
@@ -63,9 +79,6 @@ export const useAuthStore = defineStore('auth', () => {
       console.error('Error loading user preferences:', error)
     }
   }
-
-  // Initialize services and load user
-  initializeServices().then(() => loadUserFromStorage())
 
   const login = async (credentials) => {
     // For now, use simple local storage authentication
@@ -238,6 +251,8 @@ export const useAuthStore = defineStore('auth', () => {
     userPreferences,
     isAuthenticated,
     hasCompletedOnboarding,
+    isInitialized,
+    initialize,
     login,
     register,
     completeOnboarding,
