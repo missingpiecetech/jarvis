@@ -190,17 +190,21 @@ Use the same JSON format as before.`;
       // Step 4.5: Process actions to create individual deletion cards and handle reads immediately
       let processedActions = finalResponse.actions || [];
       let executedResults = [];
-      
+
       if (processedActions.length > 0) {
-        const { processedActions: newActions, executedResults: execResults } = 
-          await this.processActionsForExecution(processedActions, userId, contextData);
+        const { processedActions: newActions, executedResults: execResults } =
+          await this.processActionsForExecution(
+            processedActions,
+            userId,
+            contextData
+          );
         processedActions = newActions;
         executedResults = execResults;
       }
 
       // Step 5: Return final response
-      const needsConfirmation = processedActions.some(action => 
-        !['READ_TASKS', 'READ_EVENTS'].includes(action.type)
+      const needsConfirmation = processedActions.some(
+        (action) => !["READ_TASKS", "READ_EVENTS"].includes(action.type)
       );
 
       return {
@@ -371,7 +375,9 @@ Use the same JSON format as before.`;
             context.tasks.push(...tasks);
           } else if (action.type === "READ_TASKS") {
             // Get recent tasks for context
-            const tasksResult = await taskService.getTasks(userId, { limit: 10 });
+            const tasksResult = await taskService.getTasks(userId, {
+              limit: 10,
+            });
             if (tasksResult.success) {
               context.tasks.push(...tasksResult.data);
             }
@@ -386,7 +392,9 @@ Use the same JSON format as before.`;
             context.events.push(...events);
           } else if (action.type === "READ_EVENTS") {
             // Get recent events for context
-            const eventsResult = await eventService.getEvents(userId, { limit: 10 });
+            const eventsResult = await eventService.getEvents(userId, {
+              limit: 10,
+            });
             if (eventsResult.success) {
               context.events.push(...eventsResult.data);
             }
@@ -426,126 +434,150 @@ Use the same JSON format as before.`;
     const { eventService } = await import("./EventService.js");
 
     for (const action of actions) {
-      if (action.type === 'READ_TASKS') {
+      if (action.type === "READ_TASKS") {
         // Execute read operations immediately
         try {
           let tasks = [];
           if (action.params?.searchParams) {
-            tasks = await taskService.searchTasks(userId, action.params.searchParams);
+            tasks = await taskService.getAll(
+              userId,
+              action.params.searchParams
+            );
           } else {
-            const result = await taskService.getTasks(userId, { limit: 20 });
+            const result = await taskService.getAll(userId, { limit: 20 });
             tasks = result.success ? result.data : [];
           }
-          
+
           executedResults.push({
-            type: 'READ_TASKS',
+            type: "READ_TASKS",
             success: true,
             data: tasks,
-            count: tasks.length
+            count: tasks.length,
           });
         } catch (error) {
           executedResults.push({
-            type: 'READ_TASKS',
+            type: "READ_TASKS",
             success: false,
-            error: error.message
+            error: error.message,
           });
         }
-      } else if (action.type === 'READ_EVENTS') {
+      } else if (action.type === "READ_EVENTS") {
         // Execute read operations immediately
         try {
           let events = [];
           if (action.params?.searchParams) {
-            events = await eventService.searchEvents(userId, action.params.searchParams);
+            events = await eventService.searchEvents(
+              userId,
+              action.params.searchParams
+            );
           } else {
             const result = await eventService.getEvents(userId, { limit: 20 });
             events = result.success ? result.data : [];
           }
-          
+
           executedResults.push({
-            type: 'READ_EVENTS',
+            type: "READ_EVENTS",
             success: true,
             data: events,
-            count: events.length
+            count: events.length,
           });
         } catch (error) {
           executedResults.push({
-            type: 'READ_EVENTS',
+            type: "READ_EVENTS",
             success: false,
-            error: error.message
+            error: error.message,
           });
         }
-      } else if (action.type === 'DELETE_TASK' && action.params?.searchParams) {
+      } else if (action.type === "DELETE_TASK" && action.params?.searchParams) {
         // Create individual deletion actions for each matching task
         try {
-          const matchingTasks = await taskService.searchTasks(userId, action.params.searchParams);
-          
+          const matchingTasks = await taskService.searchTasks(
+            userId,
+            action.params.searchParams
+          );
+
           for (const task of matchingTasks) {
             processedActions.push({
-              type: 'DELETE_TASK',
+              type: "DELETE_TASK",
               params: { id: task.id },
               item: task,
-              description: `Delete task: "${task.title}"`
+              description: `Delete task: "${task.title}"`,
             });
           }
         } catch (error) {
-          console.error('Error processing DELETE_TASK action:', error);
+          console.error("Error processing DELETE_TASK action:", error);
           processedActions.push(action); // Keep original if processing fails
         }
-      } else if (action.type === 'DELETE_EVENT' && action.params?.searchParams) {
+      } else if (
+        action.type === "DELETE_EVENT" &&
+        action.params?.searchParams
+      ) {
         // Create individual deletion actions for each matching event
         try {
-          const matchingEvents = await eventService.searchEvents(userId, action.params.searchParams);
-          
+          const matchingEvents = await eventService.searchEvents(
+            userId,
+            action.params.searchParams
+          );
+
           for (const event of matchingEvents) {
             processedActions.push({
-              type: 'DELETE_EVENT',
+              type: "DELETE_EVENT",
               params: { id: event.id },
               item: event,
-              description: `Delete event: "${event.title}"`
+              description: `Delete event: "${event.title}"`,
             });
           }
         } catch (error) {
-          console.error('Error processing DELETE_EVENT action:', error);
+          console.error("Error processing DELETE_EVENT action:", error);
           processedActions.push(action); // Keep original if processing fails
         }
-      } else if (action.type === 'UPDATE_TASK' && action.params?.searchParams) {
+      } else if (action.type === "UPDATE_TASK" && action.params?.searchParams) {
         // Create individual update actions for each matching task
         try {
-          const matchingTasks = await taskService.searchTasks(userId, action.params.searchParams);
-          
+          const matchingTasks = await taskService.searchTasks(
+            userId,
+            action.params.searchParams
+          );
+
           for (const task of matchingTasks) {
             processedActions.push({
-              type: 'UPDATE_TASK',
-              params: { 
+              type: "UPDATE_TASK",
+              params: {
                 id: task.id,
-                updates: action.params.updates 
+                updates: action.params.updates,
               },
               item: task,
-              description: `Update task: "${task.title}"`
+              description: `Update task: "${task.title}"`,
             });
           }
         } catch (error) {
-          console.error('Error processing UPDATE_TASK action:', error);
+          console.error("Error processing UPDATE_TASK action:", error);
           processedActions.push(action); // Keep original if processing fails
         }
-      } else if (action.type === 'UPDATE_EVENT' && action.params?.searchParams) {
+      } else if (
+        action.type === "UPDATE_EVENT" &&
+        action.params?.searchParams
+      ) {
         // Create individual update actions for each matching event
         try {
-          const matchingEvents = await eventService.searchEvents(userId, action.params.searchParams);
-          
+          const matchingEvents = await eventService.searchEvents(
+            userId,
+            action.params.searchParams
+          );
+
           for (const event of matchingEvents) {
             processedActions.push({
-              type: 'UPDATE_EVENT',
-              params: { 
+              type: "UPDATE_EVENT",
+              params: {
                 id: event.id,
-                updates: action.params.updates 
+                updates: action.params.updates,
               },
               item: event,
-              description: `Update event: "${event.title}"`
+              description: `Update event: "${event.title}"`,
             });
           }
         } catch (error) {
-          console.error('Error processing UPDATE_EVENT action:', error);
+          console.error("Error processing UPDATE_EVENT action:", error);
           processedActions.push(action); // Keep original if processing fails
         }
       } else {
@@ -584,14 +616,17 @@ Use the same JSON format as before.`;
           case "UPDATE_TASK":
             if (action.params.id && action.params.updates) {
               // Individual task update
-              const updateResult = await taskService.update(action.params.id, action.params.updates);
+              const updateResult = await taskService.update(
+                action.params.id,
+                action.params.updates
+              );
               result.data = updateResult;
               result.success = updateResult.success;
             } else if (action.params.searchParams && action.params.updates) {
               // Search-based update (legacy support)
               const updateResult = await taskService.updateTasksBySearch(
-                userId, 
-                action.params.searchParams, 
+                userId,
+                action.params.searchParams,
                 action.params.updates
               );
               result.data = updateResult;
@@ -610,7 +645,7 @@ Use the same JSON format as before.`;
             } else if (action.params.searchParams) {
               // Search-based delete (legacy support)
               const deleteResult = await taskService.deleteTasksBySearch(
-                userId, 
+                userId,
                 action.params.searchParams
               );
               result.data = deleteResult;
@@ -632,14 +667,17 @@ Use the same JSON format as before.`;
           case "UPDATE_EVENT":
             if (action.params.id && action.params.updates) {
               // Individual event update
-              const updateResult = await eventService.update(action.params.id, action.params.updates);
+              const updateResult = await eventService.update(
+                action.params.id,
+                action.params.updates
+              );
               result.data = updateResult;
               result.success = updateResult.success;
             } else if (action.params.searchParams && action.params.updates) {
               // Search-based update (legacy support)
               const updateResult = await eventService.updateEventsBySearch(
-                userId, 
-                action.params.searchParams, 
+                userId,
+                action.params.searchParams,
                 action.params.updates
               );
               result.data = updateResult;
@@ -658,7 +696,7 @@ Use the same JSON format as before.`;
             } else if (action.params.searchParams) {
               // Search-based delete (legacy support)
               const deleteResult = await eventService.deleteEventsBySearch(
-                userId, 
+                userId,
                 action.params.searchParams
               );
               result.data = deleteResult;

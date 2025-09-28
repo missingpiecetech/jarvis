@@ -119,6 +119,7 @@ class TaskService {
    * Get all tasks for current user
    */
   async getAll(filters = {}) {
+    console.log("getAll calleed with ", filters);
     try {
       let tasks = [];
 
@@ -128,11 +129,21 @@ class TaskService {
         const authStore = useAuthStore();
         const currentUser = authStore.user;
         console.log("Current user for task query:", currentUser);
-        const filter = `user_id = "${currentUser?.id}"`;
-        console.log("Task query filter:", filter);
+        // Build filter string including user_id and any additional filters
+        let filter = `user_id = "${currentUser?.id}"`;
+        for (const [key, value] of Object.entries(filters)) {
+          if (key === "userId") continue; // already included
+          if (Array.isArray(value)) {
+            // For array filters (e.g. tags), use PocketBase 'IN' syntax
+            filter += ` && ${key} ~ "${value.join(",")}"`;
+          } else if (value !== undefined && value !== null) {
+            filter += ` && ${key} = "${value}"`;
+          }
+        }
+        console.log("Task query filter:", filters);
         const result = await pocketbaseService.getAll(
           this.collection,
-          filter,
+          filters,
           "-created"
         );
         console.log("PocketBase getAll result:", result);
@@ -292,6 +303,7 @@ class TaskService {
   async searchTasks(userId, searchParams) {
     try {
       const result = await this.getAll();
+      console.log("All tasks for search:", result);
       if (!result.success) {
         return [];
       }
@@ -300,17 +312,17 @@ class TaskService {
 
       // Filter by search parameters
       if (searchParams.title) {
-        tasks = tasks.filter(task => 
+        tasks = tasks.filter((task) =>
           task.title.toLowerCase().includes(searchParams.title.toLowerCase())
         );
       }
 
       if (searchParams.status) {
-        tasks = tasks.filter(task => task.status === searchParams.status);
+        tasks = tasks.filter((task) => task.status === searchParams.status);
       }
 
       if (searchParams.priority) {
-        tasks = tasks.filter(task => task.priority === searchParams.priority);
+        tasks = tasks.filter((task) => task.priority === searchParams.priority);
       }
 
       if (searchParams.dueDate) {
@@ -318,8 +330,8 @@ class TaskService {
         targetDate.setHours(0, 0, 0, 0);
         const nextDay = new Date(targetDate);
         nextDay.setDate(nextDay.getDate() + 1);
-        
-        tasks = tasks.filter(task => {
+
+        tasks = tasks.filter((task) => {
           if (!task.dueDate) return false;
           const taskDate = new Date(task.dueDate);
           return taskDate >= targetDate && taskDate < nextDay;
@@ -328,27 +340,27 @@ class TaskService {
 
       if (searchParams.dueBefore) {
         const beforeDate = new Date(searchParams.dueBefore);
-        tasks = tasks.filter(task => 
-          task.dueDate && new Date(task.dueDate) < beforeDate
+        tasks = tasks.filter(
+          (task) => task.dueDate && new Date(task.dueDate) < beforeDate
         );
       }
 
       if (searchParams.dueAfter) {
         const afterDate = new Date(searchParams.dueAfter);
-        tasks = tasks.filter(task => 
-          task.dueDate && new Date(task.dueDate) > afterDate
+        tasks = tasks.filter(
+          (task) => task.dueDate && new Date(task.dueDate) > afterDate
         );
       }
 
       if (searchParams.tags && searchParams.tags.length > 0) {
-        tasks = tasks.filter(task => 
-          searchParams.tags.some(tag => task.tags.includes(tag))
+        tasks = tasks.filter((task) =>
+          searchParams.tags.some((tag) => task.tags.includes(tag))
         );
       }
 
       return tasks;
     } catch (error) {
-      console.error('Error searching tasks:', error);
+      console.error("Error searching tasks:", error);
       return [];
     }
   }
@@ -366,17 +378,17 @@ class TaskService {
         results.push({
           task,
           result,
-          success: result.success
+          success: result.success,
         });
       }
 
       return {
         success: true,
         data: results,
-        count: results.length
+        count: results.length,
       };
     } catch (error) {
-      console.error('Error updating tasks by search:', error);
+      console.error("Error updating tasks by search:", error);
       return { success: false, error: error.message };
     }
   }
@@ -394,17 +406,17 @@ class TaskService {
         results.push({
           task,
           result,
-          success: result.success
+          success: result.success,
         });
       }
 
       return {
         success: true,
         data: results,
-        count: results.length
+        count: results.length,
       };
     } catch (error) {
-      console.error('Error deleting tasks by search:', error);
+      console.error("Error deleting tasks by search:", error);
       return { success: false, error: error.message };
     }
   }
