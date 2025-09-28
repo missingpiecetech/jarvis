@@ -90,6 +90,59 @@
                   </div>
                 </div>
 
+                <!-- Executed Results for Read Operations -->
+                <div
+                  v-if="message.executedResults && message.executedResults.length > 0"
+                  class="message-executed-results q-mt-sm"
+                >
+                  <div
+                    v-for="result in message.executedResults"
+                    :key="`result-${result.type}`"
+                    class="q-mb-sm"
+                  >
+                    <div v-if="result.type === 'READ_TASKS' && result.success">
+                      <div class="text-subtitle2 q-mb-sm">
+                        <q-icon name="task_alt" class="q-mr-xs"/>
+                        {{ result.count > 0 ? `Found ${result.count} task${result.count !== 1 ? 's' : ''}:` : 'No tasks found' }}
+                      </div>
+                      <div v-if="result.count > 0" class="task-cards-grid">
+                        <TaskInfoCard
+                          v-for="task in result.data.slice(0, 10)"
+                          :key="task.id"
+                          :task="task"
+                          class="q-mb-sm"
+                        />
+                        <div v-if="result.data.length > 10" class="text-caption text-grey-6">
+                          ...and {{ result.data.length - 10 }} more
+                        </div>
+                      </div>
+                    </div>
+
+                    <div v-if="result.type === 'READ_EVENTS' && result.success">
+                      <div class="text-subtitle2 q-mb-sm">
+                        <q-icon name="event" class="q-mr-xs"/>
+                        {{ result.count > 0 ? `Found ${result.count} event${result.count !== 1 ? 's' : ''}:` : 'No events found' }}
+                      </div>
+                      <div v-if="result.count > 0" class="event-cards-grid">
+                        <EventInfoCard
+                          v-for="event in result.data.slice(0, 10)"
+                          :key="event.id"
+                          :event="event"
+                          class="q-mb-sm"
+                        />
+                        <div v-if="result.data.length > 10" class="text-caption text-grey-6">
+                          ...and {{ result.data.length - 10 }} more
+                        </div>
+                      </div>
+                    </div>
+
+                    <div v-if="!result.success" class="text-negative">
+                      <q-icon name="error" class="q-mr-xs"/>
+                      Error: {{ result.error }}
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Action Cards for Confirmation -->
                 <div
                   v-if="message.actions && message.actions.length > 0"
@@ -240,6 +293,8 @@ import { Message } from "src/models";
 import { useAuthStore } from "src/stores/auth";
 import ChatTaskCard from "src/components/ChatTaskCard.vue";
 import ActionCard from "src/components/ActionCard.vue";
+import TaskInfoCard from "src/components/TaskInfoCard.vue";
+import EventInfoCard from "src/components/EventInfoCard.vue";
 
 const $q = useQuasar();
 const authStore = useAuthStore();
@@ -283,7 +338,7 @@ watch(
   messages,
   () => {
     nextTick(() => {
-      scrollToBottom();
+      scrollToBottomIfNeeded();
     });
   },
   { deep: true }
@@ -433,6 +488,7 @@ async function sendMessage() {
         timestamp: new Date(),
         isCommand: conversationResult.actions?.length > 0,
         actions: conversationResult.actions || [],
+        executedResults: conversationResult.executedResults || [],
         needsConfirmation: conversationResult.needsConfirmation || false,
         metadata: conversationResult.metadata,
       });
@@ -551,9 +607,27 @@ function formatTime(timestamp) {
 /**
  * Scroll to bottom of messages
  */
+/**
+ * Scroll to bottom of messages container
+ */
 function scrollToBottom() {
   if (messagesContainer.value) {
     messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+  }
+}
+
+/**
+ * Scroll to bottom only if user is already near the bottom
+ */
+function scrollToBottomIfNeeded() {
+  if (messagesContainer.value) {
+    const container = messagesContainer.value;
+    const threshold = 100; // pixels from bottom
+    const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - threshold;
+    
+    if (isNearBottom) {
+      scrollToBottom();
+    }
   }
 }
 
@@ -910,5 +984,27 @@ async function rejectAllActions(message) {
     padding: 10px 14px;
     font-size: 14px;
   }
+}
+
+// Task and Event Cards Display
+.task-cards-grid, .event-cards-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.message-executed-results {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 8px;
+}
+
+.message-executed-results .text-subtitle2 {
+  color: #495057;
+  font-weight: 600;
 }
 </style>

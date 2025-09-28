@@ -161,7 +161,14 @@ Initial analysis: ${JSON.stringify(analysisData, null, 2)}
 Context gathered from database:
 ${JSON.stringify(contextData, null, 2)}
 
-Based on this context, provide your final response and any refined actions. Use the same JSON format as before.`;
+Based on this context, provide your final response and any refined actions. 
+
+IMPORTANT REFINEMENTS:
+1. For DELETE operations: Create individual deletion actions for EACH item found, not a single bulk action
+2. For READ operations: Execute immediately, no confirmation needed
+3. For UPDATE operations: Show what items will be updated with their new values
+
+Use the same JSON format as before.`;
 
         const followupResponse = await this.sendMessage([
           {
@@ -180,13 +187,29 @@ Based on this context, provide your final response and any refined actions. Use 
         }
       }
 
+      // Step 4.5: Process actions to create individual deletion cards and handle reads immediately
+      let processedActions = finalResponse.actions || [];
+      let executedResults = [];
+      
+      if (processedActions.length > 0) {
+        const { processedActions: newActions, executedResults: execResults } = 
+          await this.processActionsForExecution(processedActions, userId, contextData);
+        processedActions = newActions;
+        executedResults = execResults;
+      }
+
       // Step 5: Return final response
+      const needsConfirmation = processedActions.some(action => 
+        !['READ_TASKS', 'READ_EVENTS'].includes(action.type)
+      );
+
       return {
         success: true,
         response: finalResponse.response || "I've processed your request.",
-        actions: finalResponse.actions || [],
+        actions: processedActions,
+        executedResults,
         metadata: finalResponse.metadata || {},
-        needsConfirmation: finalResponse.actions?.length > 0,
+        needsConfirmation,
       };
     } catch (error) {
       console.error("Error in processConversation:", error);
@@ -348,8 +371,10 @@ Based on this context, provide your final response and any refined actions. Use 
             context.tasks.push(...tasks);
           } else if (action.type === "READ_TASKS") {
             // Get recent tasks for context
-            const tasks = await taskService.getTasks(userId, { limit: 10 });
-            context.tasks.push(...tasks);
+            const tasksResult = await taskService.getTasks(userId, { limit: 10 });
+            if (tasksResult.success) {
+              context.tasks.push(...tasksResult.data);
+            }
           }
         } else if (action.type.includes("EVENT")) {
           // Query events based on search parameters
@@ -361,8 +386,10 @@ Based on this context, provide your final response and any refined actions. Use 
             context.events.push(...events);
           } else if (action.type === "READ_EVENTS") {
             // Get recent events for context
-            const events = await eventService.getEvents(userId, { limit: 10 });
-            context.events.push(...events);
+            const eventsResult = await eventService.getEvents(userId, { limit: 10 });
+            if (eventsResult.success) {
+              context.events.push(...eventsResult.data);
+            }
           }
         }
       } catch (error) {
@@ -385,6 +412,149 @@ Based on this context, provide your final response and any refined actions. Use 
     }
 
     return context;
+  }
+
+  /**
+   * Process actions to create individual deletion cards and execute read operations immediately
+   */
+  async processActionsForExecution(actions, userId, contextData) {
+    const processedActions = [];
+    const executedResults = [];
+
+    // Import services dynamically to avoid circular dependencies
+    const { taskService } = await import("./TaskService.js");
+    const { eventService } = await import("./EventService.js");
+
+    for (const action of actions) {
+      if (action.type === 'READ_TASKS') {
+        // Execute read operations immediately
+        try {
+          let tasks = [];
+          if (action.params?.searchParams) {
+            tasks = await taskService.searchTasks(userId, action.params.searchParams);
+          } else {
+            const result = await taskService.getTasks(userId, { limit: 20 });
+            tasks = result.success ? result.data : [];
+          }
+          
+          executedResults.push({
+            type: 'READ_TASKS',
+            success: true,
+            data: tasks,
+            count: tasks.length
+          });
+        } catch (error) {
+          executedResults.push({
+            type: 'READ_TASKS',
+            success: false,
+            error: error.message
+          });
+        }
+      } else if (action.type === 'READ_EVENTS') {
+        // Execute read operations immediately
+        try {
+          let events = [];
+          if (action.params?.searchParams) {
+            events = await eventService.searchEvents(userId, action.params.searchParams);
+          } else {
+            const result = await eventService.getEvents(userId, { limit: 20 });
+            events = result.success ? result.data : [];
+          }
+          
+          executedResults.push({
+            type: 'READ_EVENTS',
+            success: true,
+            data: events,
+            count: events.length
+          });
+        } catch (error) {
+          executedResults.push({
+            type: 'READ_EVENTS',
+            success: false,
+            error: error.message
+          });
+        }
+      } else if (action.type === 'DELETE_TASK' && action.params?.searchParams) {
+        // Create individual deletion actions for each matching task
+        try {
+          const matchingTasks = await taskService.searchTasks(userId, action.params.searchParams);
+          
+          for (const task of matchingTasks) {
+            processedActions.push({
+              type: 'DELETE_TASK',
+              params: { id: task.id },
+              item: task,
+              description: `Delete task: "${task.title}"`
+            });
+          }
+        } catch (error) {
+          console.error('Error processing DELETE_TASK action:', error);
+          processedActions.push(action); // Keep original if processing fails
+        }
+      } else if (action.type === 'DELETE_EVENT' && action.params?.searchParams) {
+        // Create individual deletion actions for each matching event
+        try {
+          const matchingEvents = await eventService.searchEvents(userId, action.params.searchParams);
+          
+          for (const event of matchingEvents) {
+            processedActions.push({
+              type: 'DELETE_EVENT',
+              params: { id: event.id },
+              item: event,
+              description: `Delete event: "${event.title}"`
+            });
+          }
+        } catch (error) {
+          console.error('Error processing DELETE_EVENT action:', error);
+          processedActions.push(action); // Keep original if processing fails
+        }
+      } else if (action.type === 'UPDATE_TASK' && action.params?.searchParams) {
+        // Create individual update actions for each matching task
+        try {
+          const matchingTasks = await taskService.searchTasks(userId, action.params.searchParams);
+          
+          for (const task of matchingTasks) {
+            processedActions.push({
+              type: 'UPDATE_TASK',
+              params: { 
+                id: task.id,
+                updates: action.params.updates 
+              },
+              item: task,
+              description: `Update task: "${task.title}"`
+            });
+          }
+        } catch (error) {
+          console.error('Error processing UPDATE_TASK action:', error);
+          processedActions.push(action); // Keep original if processing fails
+        }
+      } else if (action.type === 'UPDATE_EVENT' && action.params?.searchParams) {
+        // Create individual update actions for each matching event
+        try {
+          const matchingEvents = await eventService.searchEvents(userId, action.params.searchParams);
+          
+          for (const event of matchingEvents) {
+            processedActions.push({
+              type: 'UPDATE_EVENT',
+              params: { 
+                id: event.id,
+                updates: action.params.updates 
+              },
+              item: event,
+              description: `Update event: "${event.title}"`
+            });
+          }
+        } catch (error) {
+          console.error('Error processing UPDATE_EVENT action:', error);
+          processedActions.push(action); // Keep original if processing fails
+        }
+      } else {
+        // Keep other actions as-is
+        processedActions.push(action);
+      }
+    }
+
+    return { processedActions, executedResults };
   }
 
   /**
@@ -412,16 +582,41 @@ Based on this context, provide your final response and any refined actions. Use 
             break;
 
           case "UPDATE_TASK":
-            if (action.params.searchParams && action.params.updates) {
-              // TODO: Implement search-based update in TaskService
-              result.error = "Search-based task updates not yet implemented";
+            if (action.params.id && action.params.updates) {
+              // Individual task update
+              const updateResult = await taskService.update(action.params.id, action.params.updates);
+              result.data = updateResult;
+              result.success = updateResult.success;
+            } else if (action.params.searchParams && action.params.updates) {
+              // Search-based update (legacy support)
+              const updateResult = await taskService.updateTasksBySearch(
+                userId, 
+                action.params.searchParams, 
+                action.params.updates
+              );
+              result.data = updateResult;
+              result.success = updateResult.success;
+            } else {
+              result.error = "Missing required parameters for task update";
             }
             break;
 
           case "DELETE_TASK":
-            if (action.params.searchParams) {
-              // TODO: Implement search-based delete in TaskService
-              result.error = "Search-based task deletes not yet implemented";
+            if (action.params.id) {
+              // Individual task deletion
+              const deleteResult = await taskService.delete(action.params.id);
+              result.data = deleteResult;
+              result.success = deleteResult.success;
+            } else if (action.params.searchParams) {
+              // Search-based delete (legacy support)
+              const deleteResult = await taskService.deleteTasksBySearch(
+                userId, 
+                action.params.searchParams
+              );
+              result.data = deleteResult;
+              result.success = deleteResult.success;
+            } else {
+              result.error = "Missing required parameters for task deletion";
             }
             break;
 
@@ -435,16 +630,41 @@ Based on this context, provide your final response and any refined actions. Use 
             break;
 
           case "UPDATE_EVENT":
-            if (action.params.searchParams && action.params.updates) {
-              // TODO: Implement search-based update in EventService
-              result.error = "Search-based event updates not yet implemented";
+            if (action.params.id && action.params.updates) {
+              // Individual event update
+              const updateResult = await eventService.update(action.params.id, action.params.updates);
+              result.data = updateResult;
+              result.success = updateResult.success;
+            } else if (action.params.searchParams && action.params.updates) {
+              // Search-based update (legacy support)
+              const updateResult = await eventService.updateEventsBySearch(
+                userId, 
+                action.params.searchParams, 
+                action.params.updates
+              );
+              result.data = updateResult;
+              result.success = updateResult.success;
+            } else {
+              result.error = "Missing required parameters for event update";
             }
             break;
 
           case "DELETE_EVENT":
-            if (action.params.searchParams) {
-              // TODO: Implement search-based delete in EventService
-              result.error = "Search-based event deletes not yet implemented";
+            if (action.params.id) {
+              // Individual event deletion
+              const deleteResult = await eventService.delete(action.params.id);
+              result.data = deleteResult;
+              result.success = deleteResult.success;
+            } else if (action.params.searchParams) {
+              // Search-based delete (legacy support)
+              const deleteResult = await eventService.deleteEventsBySearch(
+                userId, 
+                action.params.searchParams
+              );
+              result.data = deleteResult;
+              result.success = deleteResult.success;
+            } else {
+              result.error = "Missing required parameters for event deletion";
             }
             break;
 

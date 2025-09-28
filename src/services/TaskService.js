@@ -287,6 +287,140 @@ class TaskService {
   }
 
   /**
+   * Search tasks based on search parameters
+   */
+  async searchTasks(userId, searchParams) {
+    try {
+      const result = await this.getAll();
+      if (!result.success) {
+        return [];
+      }
+
+      let tasks = result.data;
+
+      // Filter by search parameters
+      if (searchParams.title) {
+        tasks = tasks.filter(task => 
+          task.title.toLowerCase().includes(searchParams.title.toLowerCase())
+        );
+      }
+
+      if (searchParams.status) {
+        tasks = tasks.filter(task => task.status === searchParams.status);
+      }
+
+      if (searchParams.priority) {
+        tasks = tasks.filter(task => task.priority === searchParams.priority);
+      }
+
+      if (searchParams.dueDate) {
+        const targetDate = new Date(searchParams.dueDate);
+        targetDate.setHours(0, 0, 0, 0);
+        const nextDay = new Date(targetDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        
+        tasks = tasks.filter(task => {
+          if (!task.dueDate) return false;
+          const taskDate = new Date(task.dueDate);
+          return taskDate >= targetDate && taskDate < nextDay;
+        });
+      }
+
+      if (searchParams.dueBefore) {
+        const beforeDate = new Date(searchParams.dueBefore);
+        tasks = tasks.filter(task => 
+          task.dueDate && new Date(task.dueDate) < beforeDate
+        );
+      }
+
+      if (searchParams.dueAfter) {
+        const afterDate = new Date(searchParams.dueAfter);
+        tasks = tasks.filter(task => 
+          task.dueDate && new Date(task.dueDate) > afterDate
+        );
+      }
+
+      if (searchParams.tags && searchParams.tags.length > 0) {
+        tasks = tasks.filter(task => 
+          searchParams.tags.some(tag => task.tags.includes(tag))
+        );
+      }
+
+      return tasks;
+    } catch (error) {
+      console.error('Error searching tasks:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Update multiple tasks based on search parameters
+   */
+  async updateTasksBySearch(userId, searchParams, updates) {
+    try {
+      const matchingTasks = await this.searchTasks(userId, searchParams);
+      const results = [];
+
+      for (const task of matchingTasks) {
+        const result = await this.update(task.id, updates);
+        results.push({
+          task,
+          result,
+          success: result.success
+        });
+      }
+
+      return {
+        success: true,
+        data: results,
+        count: results.length
+      };
+    } catch (error) {
+      console.error('Error updating tasks by search:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Delete multiple tasks based on search parameters
+   */
+  async deleteTasksBySearch(userId, searchParams) {
+    try {
+      const matchingTasks = await this.searchTasks(userId, searchParams);
+      const results = [];
+
+      for (const task of matchingTasks) {
+        const result = await this.delete(task.id);
+        results.push({
+          task,
+          result,
+          success: result.success
+        });
+      }
+
+      return {
+        success: true,
+        data: results,
+        count: results.length
+      };
+    } catch (error) {
+      console.error('Error deleting tasks by search:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Get tasks for a specific user (overload for better API)
+   */
+  async getTasks(userId, options = {}) {
+    const filters = { ...options };
+    if (userId) {
+      filters.userId = userId;
+    }
+    return this.getAll(filters);
+  }
+
+  /**
    * Cache a single task
    */
   async cacheTask(task) {

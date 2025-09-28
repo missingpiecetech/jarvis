@@ -392,6 +392,136 @@ class EventService {
       return { success: false, error: error.message };
     }
   }
+
+  /**
+   * Search events based on search parameters
+   */
+  async searchEvents(userId, searchParams) {
+    try {
+      const result = await this.getAll();
+      if (!result.success) {
+        return [];
+      }
+
+      let events = result.data;
+
+      // Filter by search parameters
+      if (searchParams.title) {
+        events = events.filter(event => 
+          event.title.toLowerCase().includes(searchParams.title.toLowerCase())
+        );
+      }
+
+      if (searchParams.status) {
+        events = events.filter(event => event.status === searchParams.status);
+      }
+
+      if (searchParams.location) {
+        events = events.filter(event => 
+          event.location && event.location.toLowerCase().includes(searchParams.location.toLowerCase())
+        );
+      }
+
+      if (searchParams.startDate) {
+        const targetDate = new Date(searchParams.startDate);
+        targetDate.setHours(0, 0, 0, 0);
+        const nextDay = new Date(targetDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        
+        events = events.filter(event => {
+          if (!event.startDate) return false;
+          const eventDate = new Date(event.startDate);
+          return eventDate >= targetDate && eventDate < nextDay;
+        });
+      }
+
+      if (searchParams.startBefore) {
+        const beforeDate = new Date(searchParams.startBefore);
+        events = events.filter(event => 
+          event.startDate && new Date(event.startDate) < beforeDate
+        );
+      }
+
+      if (searchParams.startAfter) {
+        const afterDate = new Date(searchParams.startAfter);
+        events = events.filter(event => 
+          event.startDate && new Date(event.startDate) > afterDate
+        );
+      }
+
+      return events;
+    } catch (error) {
+      console.error('Error searching events:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Update multiple events based on search parameters
+   */
+  async updateEventsBySearch(userId, searchParams, updates) {
+    try {
+      const matchingEvents = await this.searchEvents(userId, searchParams);
+      const results = [];
+
+      for (const event of matchingEvents) {
+        const result = await this.update(event.id, updates);
+        results.push({
+          event,
+          result,
+          success: result.success
+        });
+      }
+
+      return {
+        success: true,
+        data: results,
+        count: results.length
+      };
+    } catch (error) {
+      console.error('Error updating events by search:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Delete multiple events based on search parameters
+   */
+  async deleteEventsBySearch(userId, searchParams) {
+    try {
+      const matchingEvents = await this.searchEvents(userId, searchParams);
+      const results = [];
+
+      for (const event of matchingEvents) {
+        const result = await this.delete(event.id);
+        results.push({
+          event,
+          result,
+          success: result.success
+        });
+      }
+
+      return {
+        success: true,
+        data: results,
+        count: results.length
+      };
+    } catch (error) {
+      console.error('Error deleting events by search:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Get events for a specific user (overload for better API)
+   */
+  async getEvents(userId, options = {}) {
+    const filters = { ...options };
+    if (userId) {
+      filters.userId = userId;
+    }
+    return this.getAll(filters);
+  }
 }
 
 export const eventService = new EventService();
