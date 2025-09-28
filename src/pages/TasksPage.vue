@@ -290,13 +290,17 @@ const loadTasks = async () => {
     
     switch (currentFilter.value) {
       case 'pending':
-        result = await taskService.getByStatus('pending')
+        result = await taskService.getAll({ filter: 'status = "pending"' })
         break
       case 'completed':
-        result = await taskService.getByStatus('completed')
+        result = await taskService.getAll({ filter: 'status = "completed"' })
         break
       case 'overdue':
-        result = await taskService.getOverdue()
+        // Get overdue tasks (due date in the past and not completed)
+        const now = new Date().toISOString()
+        result = await taskService.getAll({ 
+          filter: `due_date < "${now}" && status != "completed"` 
+        })
         break
       default:
         result = await taskService.getAll()

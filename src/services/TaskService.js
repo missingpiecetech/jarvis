@@ -116,35 +116,37 @@ class TaskService {
   }
 
   /**
-   * Get all tasks for current user
+   * Get all tasks for current user with PocketBase filter support
    */
   async getAll(filters = {}) {
-    console.log("getAll calleed with ", filters);
+    console.log("getAll called with filters:", filters);
     try {
       let tasks = [];
 
       // Try PocketBase first
       if (pocketbaseService.isAuthenticated()) {
-        // Use the same auth store user ID that was used during task creation
         const authStore = useAuthStore();
         const currentUser = authStore.user;
         console.log("Current user for task query:", currentUser);
-        // Build filter string including user_id and any additional filters
-        let filter = `user_id = "${currentUser?.id}"`;
-        for (const [key, value] of Object.entries(filters)) {
-          if (key === "userId") continue; // already included
-          if (Array.isArray(value)) {
-            // For array filters (e.g. tags), use PocketBase 'IN' syntax
-            filter += ` && ${key} ~ "${value.join(",")}"`;
-          } else if (value !== undefined && value !== null) {
-            filter += ` && ${key} = "${value}"`;
-          }
+        
+        // Build filter string - support both direct filter strings and object filters
+        let filterString = `user_id = "${currentUser?.id}"`;
+        
+        if (filters.filter) {
+          // If a direct filter string is provided, append it
+          filterString += ` && (${filters.filter})`;
+        } else {
+          // Build filter from object properties (backward compatibility)
+          filterString += this.buildFilter(filters);
         }
-        console.log("Task query filter:", filters);
+        
+        const sort = filters.sort || "-created";
+        
+        console.log("Final PocketBase filter:", filterString);
         const result = await pocketbaseService.getAll(
           this.collection,
-          filters,
-          "-created"
+          filterString,
+          sort
         );
         console.log("PocketBase getAll result:", result);
 
@@ -161,10 +163,14 @@ class TaskService {
       if (tasks.length === 0) {
         const cachedTasks = (await cacheService.get(this.cacheKey)) || [];
         tasks = cachedTasks.map((taskData) => new Task(taskData));
+        
+        // Apply client-side filtering for cached tasks
+        if (filters.filter) {
+          tasks = this.applyFilterString(tasks, filters.filter);
+        } else {
+          tasks = this.applyFilters(tasks, filters);
+        }
       }
-
-      // Apply filters
-      tasks = this.applyFilters(tasks, filters);
 
       return { success: true, data: tasks };
     } catch (error) {
@@ -251,185 +257,105 @@ class TaskService {
   }
 
   /**
-   * Get tasks by status
+   * Build PocketBase filter string from search parameters
    */
-  async getByStatus(status) {
-    const result = await this.getAll({ status });
-    return result;
-  }
-
-  /**
-   * Get overdue tasks
-   */
-  async getOverdue() {
-    const result = await this.getAll();
-    if (result.success) {
-      const overdueTasks = result.data.filter((task) => task.isOverdue());
-      return { success: true, data: overdueTasks };
+  buildFilter(searchParams) {
+    const conditions = [];
+    
+    if (searchParams.status) {
+      conditions.push(`status = "${searchParams.status}"`);
     }
-    return result;
-  }
-
-  /**
-   * Get tasks due today
-   */
-  async getDueToday() {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const result = await this.getAll();
-    if (result.success) {
-      const dueTodayTasks = result.data.filter(
-        (task) =>
-          task.dueDate && task.dueDate >= today && task.dueDate < tomorrow
-      );
-      return { success: true, data: dueTodayTasks };
+    
+    if (searchParams.priority) {
+      conditions.push(`priority = "${searchParams.priority}"`);
     }
-    return result;
+    
+    if (searchParams.title) {
+      conditions.push(`title ~ "${searchParams.title}"`);
+    }
+    
+    if (searchParams.dueDate) {
+      const date = new Date(searchParams.dueDate);
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      conditions.push(`due_date >= "${startOfDay.toISOString()}" && due_date <= "${endOfDay.toISOString()}"`);
+    }
+    
+    if (searchParams.dueBefore) {
+      conditions.push(`due_date < "${new Date(searchParams.dueBefore).toISOString()}"`);
+    }
+    
+    if (searchParams.dueAfter) {
+      conditions.push(`due_date > "${new Date(searchParams.dueAfter).toISOString()}"`);
+    }
+    
+    if (searchParams.tags && searchParams.tags.length > 0) {
+      const tagConditions = searchParams.tags.map(tag => `tags ~ "${tag}"`);
+      conditions.push(`(${tagConditions.join(' || ')})`);
+    }
+    
+    if (searchParams.parentTaskId) {
+      conditions.push(`parent_task_id = "${searchParams.parentTaskId}"`);
+    }
+    
+    return conditions.length > 0 ? ` && ${conditions.join(' && ')}` : '';
   }
 
   /**
-   * Get subtasks for a parent task
+   * Apply filter string to tasks array (for cached/offline data)
    */
-  async getSubtasks(parentTaskId) {
-    return this.getAll({ parentTaskId });
-  }
-
-  /**
-   * Search tasks based on search parameters
-   */
-  async searchTasks(userId, searchParams) {
-    try {
-      const result = await this.getAll();
-      console.log("All tasks for search:", result);
-      if (!result.success) {
-        return [];
+  applyFilterString(tasks, filterString) {
+    // This is a simplified client-side filter parser
+    // In a real implementation, you might want a more robust parser
+    let filteredTasks = [...tasks];
+    
+    // Basic parsing for common filter patterns
+    if (filterString.includes('status = ')) {
+      const statusMatch = filterString.match(/status = "([^"]+)"/);
+      if (statusMatch) {
+        filteredTasks = filteredTasks.filter(task => task.status === statusMatch[1]);
       }
-
-      let tasks = result.data;
-
-      // Filter by search parameters
-      if (searchParams.title) {
-        tasks = tasks.filter((task) =>
-          task.title.toLowerCase().includes(searchParams.title.toLowerCase())
+    }
+    
+    if (filterString.includes('priority = ')) {
+      const priorityMatch = filterString.match(/priority = "([^"]+)"/);
+      if (priorityMatch) {
+        filteredTasks = filteredTasks.filter(task => task.priority === priorityMatch[1]);
+      }
+    }
+    
+    if (filterString.includes('title ~ ')) {
+      const titleMatch = filterString.match(/title ~ "([^"]+)"/);
+      if (titleMatch) {
+        filteredTasks = filteredTasks.filter(task => 
+          task.title.toLowerCase().includes(titleMatch[1].toLowerCase())
         );
       }
-
-      if (searchParams.status) {
-        tasks = tasks.filter((task) => task.status === searchParams.status);
-      }
-
-      if (searchParams.priority) {
-        tasks = tasks.filter((task) => task.priority === searchParams.priority);
-      }
-
-      if (searchParams.dueDate) {
-        const targetDate = new Date(searchParams.dueDate);
-        targetDate.setHours(0, 0, 0, 0);
-        const nextDay = new Date(targetDate);
-        nextDay.setDate(nextDay.getDate() + 1);
-
-        tasks = tasks.filter((task) => {
-          if (!task.dueDate) return false;
-          const taskDate = new Date(task.dueDate);
-          return taskDate >= targetDate && taskDate < nextDay;
-        });
-      }
-
-      if (searchParams.dueBefore) {
-        const beforeDate = new Date(searchParams.dueBefore);
-        tasks = tasks.filter(
-          (task) => task.dueDate && new Date(task.dueDate) < beforeDate
+    }
+    
+    if (filterString.includes('due_date < ')) {
+      const dueDateMatch = filterString.match(/due_date < "([^"]+)"/);
+      if (dueDateMatch) {
+        const beforeDate = new Date(dueDateMatch[1]);
+        filteredTasks = filteredTasks.filter(task => 
+          task.dueDate && new Date(task.dueDate) < beforeDate
         );
       }
-
-      if (searchParams.dueAfter) {
-        const afterDate = new Date(searchParams.dueAfter);
-        tasks = tasks.filter(
-          (task) => task.dueDate && new Date(task.dueDate) > afterDate
+    }
+    
+    if (filterString.includes('due_date > ')) {
+      const dueDateMatch = filterString.match(/due_date > "([^"]+)"/);
+      if (dueDateMatch) {
+        const afterDate = new Date(dueDateMatch[1]);
+        filteredTasks = filteredTasks.filter(task => 
+          task.dueDate && new Date(task.dueDate) > afterDate
         );
       }
-
-      if (searchParams.tags && searchParams.tags.length > 0) {
-        tasks = tasks.filter((task) =>
-          searchParams.tags.some((tag) => task.tags.includes(tag))
-        );
-      }
-
-      return tasks;
-    } catch (error) {
-      console.error("Error searching tasks:", error);
-      return [];
     }
-  }
-
-  /**
-   * Update multiple tasks based on search parameters
-   */
-  async updateTasksBySearch(userId, searchParams, updates) {
-    try {
-      const matchingTasks = await this.searchTasks(userId, searchParams);
-      const results = [];
-
-      for (const task of matchingTasks) {
-        const result = await this.update(task.id, updates);
-        results.push({
-          task,
-          result,
-          success: result.success,
-        });
-      }
-
-      return {
-        success: true,
-        data: results,
-        count: results.length,
-      };
-    } catch (error) {
-      console.error("Error updating tasks by search:", error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  /**
-   * Delete multiple tasks based on search parameters
-   */
-  async deleteTasksBySearch(userId, searchParams) {
-    try {
-      const matchingTasks = await this.searchTasks(userId, searchParams);
-      const results = [];
-
-      for (const task of matchingTasks) {
-        const result = await this.delete(task.id);
-        results.push({
-          task,
-          result,
-          success: result.success,
-        });
-      }
-
-      return {
-        success: true,
-        data: results,
-        count: results.length,
-      };
-    } catch (error) {
-      console.error("Error deleting tasks by search:", error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  /**
-   * Get tasks for a specific user (overload for better API)
-   */
-  async getTasks(userId, options = {}) {
-    const filters = { ...options };
-    if (userId) {
-      filters.userId = userId;
-    }
-    return this.getAll(filters);
+    
+    return filteredTasks;
   }
 
   /**

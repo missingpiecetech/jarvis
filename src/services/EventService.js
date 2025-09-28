@@ -513,6 +513,52 @@ class EventService {
   }
 
   /**
+   * Build PocketBase filter string from search parameters
+   */
+  buildFilter(searchParams) {
+    const conditions = [];
+    
+    if (searchParams.status) {
+      conditions.push(`status = "${searchParams.status}"`);
+    }
+    
+    if (searchParams.title) {
+      conditions.push(`title ~ "${searchParams.title}"`);
+    }
+    
+    if (searchParams.location) {
+      conditions.push(`location ~ "${searchParams.location}"`);
+    }
+    
+    if (searchParams.startDate) {
+      const date = new Date(searchParams.startDate);
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      conditions.push(`start_date >= "${startOfDay.toISOString()}" && start_date <= "${endOfDay.toISOString()}"`);
+    }
+    
+    if (searchParams.startBefore) {
+      conditions.push(`start_date < "${new Date(searchParams.startBefore).toISOString()}"`);
+    }
+    
+    if (searchParams.startAfter) {
+      conditions.push(`start_date > "${new Date(searchParams.startAfter).toISOString()}"`);
+    }
+    
+    if (searchParams.provider) {
+      conditions.push(`provider = "${searchParams.provider}"`);
+    }
+    
+    if (searchParams.visibility) {
+      conditions.push(`visibility = "${searchParams.visibility}"`);
+    }
+    
+    return conditions.length > 0 ? ` && ${conditions.join(' && ')}` : '';
+  }
+
+  /**
    * Get events for a specific user (overload for better API)
    */
   async getEvents(userId, options = {}) {

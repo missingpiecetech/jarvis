@@ -368,15 +368,15 @@ Use the same JSON format as before.`;
         if (action.type.includes("TASK")) {
           // Query tasks based on search parameters
           if (action.params?.searchParams) {
-            const tasks = await taskService.searchTasks(
-              userId,
-              action.params.searchParams
-            );
-            context.tasks.push(...tasks);
+            const filter = taskService.buildFilter(action.params.searchParams);
+            const tasksResult = await taskService.getAll({ filter });
+            if (tasksResult.success) {
+              context.tasks.push(...tasksResult.data);
+            }
           } else if (action.type === "READ_TASKS") {
             // Get recent tasks for context
-            const tasksResult = await taskService.getTasks(userId, {
-              limit: 10,
+            const tasksResult = await taskService.getAll({
+              sort: "-created",
             });
             if (tasksResult.success) {
               context.tasks.push(...tasksResult.data);
@@ -437,16 +437,15 @@ Use the same JSON format as before.`;
       if (action.type === "READ_TASKS") {
         // Execute read operations immediately
         try {
-          let tasks = [];
+          let tasksResult;
           if (action.params?.searchParams) {
-            tasks = await taskService.getAll(
-              userId,
-              action.params.searchParams
-            );
+            const filter = taskService.buildFilter(action.params.searchParams);
+            tasksResult = await taskService.getAll({ filter });
           } else {
-            const result = await taskService.getAll(userId, { limit: 20 });
-            tasks = result.success ? result.data : [];
+            tasksResult = await taskService.getAll({ sort: "-created" });
           }
+          
+          const tasks = tasksResult.success ? tasksResult.data.slice(0, 20) : [];
 
           executedResults.push({
             type: "READ_TASKS",
@@ -491,10 +490,9 @@ Use the same JSON format as before.`;
       } else if (action.type === "DELETE_TASK" && action.params?.searchParams) {
         // Create individual deletion actions for each matching task
         try {
-          const matchingTasks = await taskService.searchTasks(
-            userId,
-            action.params.searchParams
-          );
+          const filter = taskService.buildFilter(action.params.searchParams);
+          const tasksResult = await taskService.getAll({ filter });
+          const matchingTasks = tasksResult.success ? tasksResult.data : [];
 
           for (const task of matchingTasks) {
             processedActions.push({
@@ -514,10 +512,9 @@ Use the same JSON format as before.`;
       ) {
         // Create individual deletion actions for each matching event
         try {
-          const matchingEvents = await eventService.searchEvents(
-            userId,
-            action.params.searchParams
-          );
+          const filter = eventService.buildFilter(action.params.searchParams);
+          const eventsResult = await eventService.getAll({ filter });
+          const matchingEvents = eventsResult.success ? eventsResult.data : [];
 
           for (const event of matchingEvents) {
             processedActions.push({
@@ -534,10 +531,9 @@ Use the same JSON format as before.`;
       } else if (action.type === "UPDATE_TASK" && action.params?.searchParams) {
         // Create individual update actions for each matching task
         try {
-          const matchingTasks = await taskService.searchTasks(
-            userId,
-            action.params.searchParams
-          );
+          const filter = taskService.buildFilter(action.params.searchParams);
+          const tasksResult = await taskService.getAll({ filter });
+          const matchingTasks = tasksResult.success ? tasksResult.data : [];
 
           for (const task of matchingTasks) {
             processedActions.push({
@@ -623,14 +619,8 @@ Use the same JSON format as before.`;
               result.data = updateResult;
               result.success = updateResult.success;
             } else if (action.params.searchParams && action.params.updates) {
-              // Search-based update (legacy support)
-              const updateResult = await taskService.updateTasksBySearch(
-                userId,
-                action.params.searchParams,
-                action.params.updates
-              );
-              result.data = updateResult;
-              result.success = updateResult.success;
+              // Search-based update - not supported in simplified API
+              result.error = "Search-based updates should be processed as individual actions";
             } else {
               result.error = "Missing required parameters for task update";
             }
@@ -643,13 +633,8 @@ Use the same JSON format as before.`;
               result.data = deleteResult;
               result.success = deleteResult.success;
             } else if (action.params.searchParams) {
-              // Search-based delete (legacy support)
-              const deleteResult = await taskService.deleteTasksBySearch(
-                userId,
-                action.params.searchParams
-              );
-              result.data = deleteResult;
-              result.success = deleteResult.success;
+              // Search-based delete - not supported in simplified API
+              result.error = "Search-based deletions should be processed as individual actions";
             } else {
               result.error = "Missing required parameters for task deletion";
             }
