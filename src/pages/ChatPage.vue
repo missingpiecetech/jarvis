@@ -92,7 +92,10 @@
 
                 <!-- Executed Results for Read Operations -->
                 <div
-                  v-if="message.executedResults && message.executedResults.length > 0"
+                  v-if="
+                    message.executedResults &&
+                    message.executedResults.length > 0
+                  "
                   class="message-executed-results q-mt-sm"
                 >
                   <div
@@ -102,8 +105,14 @@
                   >
                     <div v-if="result.type === 'READ_TASKS' && result.success">
                       <div class="text-subtitle2 q-mb-sm">
-                        <q-icon name="task_alt" class="q-mr-xs"/>
-                        {{ result.count > 0 ? `Found ${result.count} task${result.count !== 1 ? 's' : ''}:` : 'No tasks found' }}
+                        <q-icon name="task_alt" class="q-mr-xs" />
+                        {{
+                          result.count > 0
+                            ? `Found ${result.count} task${
+                                result.count !== 1 ? "s" : ""
+                              }:`
+                            : "No tasks found"
+                        }}
                       </div>
                       <div v-if="result.count > 0" class="task-cards-grid">
                         <TaskInfoCard
@@ -112,7 +121,10 @@
                           :task="task"
                           class="q-mb-sm"
                         />
-                        <div v-if="result.data.length > 10" class="text-caption text-grey-6">
+                        <div
+                          v-if="result.data.length > 10"
+                          class="text-caption text-grey-6"
+                        >
                           ...and {{ result.data.length - 10 }} more
                         </div>
                       </div>
@@ -120,8 +132,14 @@
 
                     <div v-if="result.type === 'READ_EVENTS' && result.success">
                       <div class="text-subtitle2 q-mb-sm">
-                        <q-icon name="event" class="q-mr-xs"/>
-                        {{ result.count > 0 ? `Found ${result.count} event${result.count !== 1 ? 's' : ''}:` : 'No events found' }}
+                        <q-icon name="event" class="q-mr-xs" />
+                        {{
+                          result.count > 0
+                            ? `Found ${result.count} event${
+                                result.count !== 1 ? "s" : ""
+                              }:`
+                            : "No events found"
+                        }}
                       </div>
                       <div v-if="result.count > 0" class="event-cards-grid">
                         <EventInfoCard
@@ -130,14 +148,17 @@
                           :event="event"
                           class="q-mb-sm"
                         />
-                        <div v-if="result.data.length > 10" class="text-caption text-grey-6">
+                        <div
+                          v-if="result.data.length > 10"
+                          class="text-caption text-grey-6"
+                        >
                           ...and {{ result.data.length - 10 }} more
                         </div>
                       </div>
                     </div>
 
                     <div v-if="!result.success" class="text-negative">
-                      <q-icon name="error" class="q-mr-xs"/>
+                      <q-icon name="error" class="q-mr-xs" />
                       Error: {{ result.error }}
                     </div>
                   </div>
@@ -286,8 +307,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, computed, watch } from "vue";
+import { ref, onMounted, onUnmounted, nextTick, computed, watch } from "vue";
 import { useQuasar } from "quasar";
+import { onBeforeRouteLeave } from "vue-router";
 import { conversationService, aiService } from "src/services";
 import { Message } from "src/models";
 import { useAuthStore } from "src/stores/auth";
@@ -333,6 +355,24 @@ onMounted(async () => {
   loadSettings();
 });
 
+// Save scroll position when leaving route or unmounting
+function saveScrollPosition() {
+  if (currentConversationId.value && messagesContainer.value) {
+    localStorage.setItem(
+      `chat_scroll_${currentConversationId.value}`,
+      messagesContainer.value.scrollTop
+    );
+  }
+}
+
+onBeforeRouteLeave(() => {
+  saveScrollPosition();
+});
+
+onUnmounted(() => {
+  saveScrollPosition();
+});
+
 // Watch for message changes to scroll to bottom
 watch(
   messages,
@@ -362,6 +402,18 @@ async function loadActiveConversation() {
       // If conversation exists but has no messages, add welcome message
       if (messages.value.length === 0) {
         await addWelcomeMessage();
+      } else {
+        // Restore scroll position or scroll to bottom
+        nextTick(() => {
+          const saved = localStorage.getItem(
+            `chat_scroll_${currentConversationId.value}`
+          );
+          if (saved && messagesContainer.value) {
+            messagesContainer.value.scrollTop = parseInt(saved);
+          } else {
+            scrollToBottom();
+          }
+        });
       }
     } else {
       // Start new conversation with welcome message
@@ -623,8 +675,10 @@ function scrollToBottomIfNeeded() {
   if (messagesContainer.value) {
     const container = messagesContainer.value;
     const threshold = 100; // pixels from bottom
-    const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - threshold;
-    
+    const isNearBottom =
+      container.scrollTop + container.clientHeight >=
+      container.scrollHeight - threshold;
+
     if (isNearBottom) {
       scrollToBottom();
     }
@@ -987,7 +1041,8 @@ async function rejectAllActions(message) {
 }
 
 // Task and Event Cards Display
-.task-cards-grid, .event-cards-grid {
+.task-cards-grid,
+.event-cards-grid {
   display: flex;
   flex-direction: column;
   gap: 8px;
