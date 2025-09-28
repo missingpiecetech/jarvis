@@ -2,11 +2,13 @@
   <q-page class="chat-page">
     <div class="chat-container">
       <!-- Chat Header -->
-      <div class="chat-header q-pa-md bg-primary text-white">
+      <div class="chat-header q-pa-md bg-secondary text-white">
         <div class="row items-center">
           <div class="col">
             <div class="text-h6">AI Assistant</div>
-            <div class="text-caption">{{ conversationTitle || 'New Conversation' }}</div>
+            <div class="text-caption">
+              {{ conversationTitle || "New Conversation" }}
+            </div>
           </div>
           <div class="col-auto">
             <q-btn
@@ -40,37 +42,63 @@
           </div>
 
           <!-- Message List -->
-          <div v-for="(message, index) in messages" :key="index" class="message-wrapper q-mb-md">
-            <div 
+          <div
+            v-for="(message, index) in messages"
+            :key="index"
+            class="message-wrapper q-mb-md"
+          >
+            <div
               class="message"
               :class="{
                 'message-user': message.role === 'user',
                 'message-assistant': message.role === 'assistant',
                 'message-error': message.isError,
                 'message-command': message.isCommand,
-                'message-welcome': message.isWelcome
+                'message-welcome': message.isWelcome,
               }"
             >
               <div class="message-avatar">
-                <q-avatar size="32px" :color="message.role === 'user' ? 'accent' : 'primary'">
+                <q-avatar
+                  size="32px"
+                  :color="message.role === 'user' ? 'accent' : 'primary'"
+                >
                   <q-icon :name="getMessageIcon(message)" />
                 </q-avatar>
               </div>
               <div class="message-content">
-                <div class="message-text" v-html="formatMessageContent(message.content)"></div>
-                
+                <div
+                  class="message-text"
+                  v-html="formatMessageContent(message.content)"
+                ></div>
+
                 <!-- Visual Elements for Commands -->
-                <div v-if="message.visualElements && message.visualElements.length > 0" class="message-visual-elements q-mt-sm">
-                  <div v-for="element in message.visualElements" :key="element.id" class="q-mb-sm">
-                    <ChatTaskCard v-if="element.type === 'task_card'" :task="element" />
+                <div
+                  v-if="
+                    message.visualElements && message.visualElements.length > 0
+                  "
+                  class="message-visual-elements q-mt-sm"
+                >
+                  <div
+                    v-for="element in message.visualElements"
+                    :key="element.id"
+                    class="q-mb-sm"
+                  >
+                    <ChatTaskCard
+                      v-if="element.type === 'task_card'"
+                      :task="element"
+                    />
                   </div>
                 </div>
-                
+
                 <!-- Action Cards for Confirmation -->
-                <div v-if="message.actions && message.actions.length > 0" class="message-actions q-mt-sm">
+                <div
+                  v-if="message.actions && message.actions.length > 0"
+                  class="message-actions q-mt-sm"
+                >
                   <div class="text-caption text-grey-6 q-mb-sm">
                     Please review and confirm the following actions:
                   </div>
+
                   <ActionCard
                     v-for="(action, index) in message.actions"
                     :key="`action-${index}`"
@@ -94,11 +122,15 @@
                     />
                   </div>
                 </div>
-                
+
                 <div class="message-meta text-caption text-grey-6">
                   {{ formatTime(message.timestamp) }}
-                  <span v-if="message.model" class="q-ml-sm">• {{ message.model }}</span>
-                  <span v-if="message.isCommand" class="q-ml-sm">• Command</span>
+                  <span v-if="message.model" class="q-ml-sm"
+                    >• {{ message.model }}</span
+                  >
+                  <span v-if="message.isCommand" class="q-ml-sm"
+                    >• Command</span
+                  >
                 </div>
               </div>
             </div>
@@ -151,11 +183,15 @@
             </template>
           </q-input>
         </div>
-        
+
         <!-- AI Configuration Status -->
-        <div v-if="!aiConfigured" class="text-caption text-warning q-pa-md q-pt-none">
+        <div
+          v-if="!aiConfigured"
+          class="text-caption text-warning q-pa-md q-pt-none"
+        >
           <q-icon name="warning" class="q-mr-xs" />
-          AI service not configured. Please add your API key to use the assistant.
+          AI service not configured. Please add your API key to use the
+          assistant.
         </div>
       </div>
     </div>
@@ -176,7 +212,7 @@
             hint="Enter your Google Gemini API key"
             class="q-mb-md"
           />
-          
+
           <q-select
             v-model="selectedModel"
             :options="modelOptions"
@@ -197,73 +233,88 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, computed, watch } from 'vue'
-import { useQuasar } from 'quasar'
-import { conversationService, aiService, chatCommandService } from 'src/services'
-import { Message } from 'src/models'
-import { useAuthStore } from 'src/stores/auth'
-import ChatTaskCard from 'src/components/ChatTaskCard.vue'
-import ActionCard from 'src/components/ActionCard.vue'
+import { ref, onMounted, nextTick, computed, watch } from "vue";
+import { useQuasar } from "quasar";
+import { conversationService, aiService } from "src/services";
+import { Message } from "src/models";
+import { useAuthStore } from "src/stores/auth";
+import ChatTaskCard from "src/components/ChatTaskCard.vue";
+import ActionCard from "src/components/ActionCard.vue";
 
-const $q = useQuasar()
-const authStore = useAuthStore()
+const $q = useQuasar();
+const authStore = useAuthStore();
 
 // Reactive data
-const messages = ref([])
-const inputMessage = ref('')
-const isTyping = ref(false)
-const currentConversationId = ref(null)
-const conversationTitle = ref('')
-const showSettings = ref(false)
-const messagesContainer = ref(null)
+const messages = ref([]);
+const inputMessage = ref("");
+const isTyping = ref(false);
+const currentConversationId = ref(null);
+const conversationTitle = ref("");
+const showSettings = ref(false);
+const messagesContainer = ref(null);
+const testActions = ref([
+  {
+    type: "CREATE_TASK",
+    params: {
+      title: "Water the ficus",
+    },
+  },
+]);
 
 // AI Configuration
-const apiKey = ref('')
-const selectedModel = ref('gemini-2.0-flash-lite')
+const apiKey = ref("");
+const selectedModel = ref("gemini-2.0-flash-lite");
 const modelOptions = [
-  { label: 'Gemini 2.0 Flash Lite (Fast)', value: 'gemini-2.0-flash-lite' },
-  { label: 'Gemini 2.5 Pro (Advanced)', value: 'gemini-2.5-pro' }
-]
+  { label: "Gemini 2.0 Flash Lite (Fast)", value: "gemini-2.0-flash-lite" },
+  { label: "Gemini 2.5 Pro (Advanced)", value: "gemini-2.5-pro" },
+];
 
 // Computed properties
-const aiConfigured = computed(() => aiService.isConfigured() || !!apiKey.value)
+const aiConfigured = computed(() => aiService.isConfigured() || !!apiKey.value);
 
 // Initialize chat
 onMounted(async () => {
-  await loadActiveConversation()
-  loadSettings()
-})
+  await loadActiveConversation();
+  loadSettings();
+});
 
 // Watch for message changes to scroll to bottom
-watch(messages, () => {
-  nextTick(() => {
-    scrollToBottom()
-  })
-}, { deep: true })
+watch(
+  messages,
+  () => {
+    nextTick(() => {
+      scrollToBottom();
+    });
+  },
+  { deep: true }
+);
 
 /**
  * Load active conversation or create new one
  */
 async function loadActiveConversation() {
   try {
-    const activeConversation = await conversationService.getActiveConversation()
-    
+    const activeConversation =
+      await conversationService.getActiveConversation();
+
     if (activeConversation.success && activeConversation.data) {
-      currentConversationId.value = activeConversation.data.id
-      conversationTitle.value = activeConversation.data.title
-      messages.value = activeConversation.data.messages.map(msg => new Message(msg))
-      
+      currentConversationId.value = activeConversation.data.id;
+      conversationTitle.value = activeConversation.data.title;
+      messages.value = activeConversation.data.messages.map(
+        (msg) => new Message(msg)
+      );
+
       // If conversation exists but has no messages, add welcome message
       if (messages.value.length === 0) {
-        await addWelcomeMessage()
+        await addWelcomeMessage();
       }
     } else {
       // Start new conversation with welcome message
-      await startNewConversation()
+      await startNewConversation();
     }
   } catch (error) {
-    console.error('Error loading active conversation:', error)
-    await startNewConversation()
+    console.error("Error loading active conversation:", error);
+    await startNewConversation();
   }
 }
 
@@ -272,23 +323,23 @@ async function loadActiveConversation() {
  */
 async function startNewConversation() {
   try {
-    const result = await conversationService.startNewSession()
-    
+    const result = await conversationService.startNewSession();
+
     if (result.success) {
-      currentConversationId.value = result.data.id
-      conversationTitle.value = result.data.title || 'New Conversation'
-      messages.value = []
-      
+      currentConversationId.value = result.data.id;
+      conversationTitle.value = result.data.title || "New Conversation";
+      messages.value = [];
+
       // Add welcome message when starting a new conversation
-      await addWelcomeMessage()
+      await addWelcomeMessage();
     } else {
       $q.notify({
-        type: 'negative',
-        message: 'Failed to start new conversation'
-      })
+        type: "negative",
+        message: "Failed to start new conversation",
+      });
     }
   } catch (error) {
-    console.error('Error starting new conversation:', error)
+    console.error("Error starting new conversation:", error);
   }
 }
 
@@ -297,8 +348,10 @@ async function startNewConversation() {
  */
 async function addWelcomeMessage() {
   const welcomeMessage = new Message({
-    role: 'assistant',
-    content: `👋 Welcome to Jarvis, ${authStore.user?.name || 'there'}! I'm your personal AI assistant.
+    role: "assistant",
+    content: `👋 Welcome to Jarvis, ${
+      authStore.user?.name || "there"
+    }! I'm your personal AI assistant.
 
 I can help you with:
 • **Task Management**: "Create a task to call John tomorrow" or "List my high priority tasks"
@@ -308,14 +361,17 @@ I can help you with:
 
 What would you like to do today?`,
     timestamp: new Date(),
-    isWelcome: true
-  })
-  
-  messages.value.push(welcomeMessage)
-  
+    isWelcome: true,
+  });
+
+  messages.value.push(welcomeMessage);
+
   // Save welcome message to conversation
   if (currentConversationId.value) {
-    await conversationService.addMessage(currentConversationId.value, welcomeMessage)
+    await conversationService.addMessage(
+      currentConversationId.value,
+      welcomeMessage
+    );
   }
 }
 
@@ -323,140 +379,124 @@ What would you like to do today?`,
  * Send message to AI
  */
 async function sendMessage() {
-  if (!inputMessage.value.trim()) return
-  
-  const userMessage = inputMessage.value.trim()
-  inputMessage.value = ''
-  
+  if (!inputMessage.value.trim()) return;
+
+  const userMessage = inputMessage.value.trim();
+  inputMessage.value = "";
+
   // Add user message
   const userMessageObj = new Message({
-    role: 'user',
+    role: "user",
     content: userMessage,
-    timestamp: new Date()
-  })
-  
-  messages.value.push(userMessageObj)
-  
+    timestamp: new Date(),
+  });
+
+  messages.value.push(userMessageObj);
+
   // Save user message to conversation
   if (currentConversationId.value) {
-    await conversationService.addMessage(currentConversationId.value, userMessageObj)
+    await conversationService.addMessage(
+      currentConversationId.value,
+      userMessageObj
+    );
   }
-  
+
   // Show typing indicator
-  isTyping.value = true
-  
+  isTyping.value = true;
+
   try {
-    // Process message with new action-based system
-    const actionResult = await chatCommandService.processMessage(
-      userMessage, 
-      authStore.user?.id, 
+    // Use the new unified conversation processing flow
+    const conversationResult = await aiService.processConversation(
+      userMessage,
+      authStore.user?.id,
       currentConversationId.value
-    )
-    
-    let assistantContent = ''
-    let assistantMessage
-    let isError = false
-    
-    if (actionResult && actionResult.success && actionResult.actions.length > 0) {
-      // Actions were identified - show confirmation interface
-      assistantContent = actionResult.response
-      
+    );
+
+    let assistantContent = "";
+    let assistantMessage;
+    let isError = false;
+
+    if (conversationResult.success) {
+      assistantContent = conversationResult.response;
+
+      console.log("Conversation result:", conversationResult);
+      console.log("Actions to display:", conversationResult.actions);
+      console.log("Actions array length:", conversationResult.actions?.length);
+      console.log(
+        "Actions array content:",
+        JSON.stringify(conversationResult.actions, null, 2)
+      );
+
       assistantMessage = new Message({
-        role: 'assistant',
+        role: "assistant",
         content: assistantContent,
         timestamp: new Date(),
-        isCommand: true,
-        actions: actionResult.actions,
-        needsConfirmation: actionResult.needsConfirmation
-      })
-      
-    } else if (actionResult && actionResult.response) {
-      // No actions but got a response (like answering questions)
-      assistantContent = actionResult.response
-      
-      assistantMessage = new Message({
-        role: 'assistant',
-        content: assistantContent,
-        timestamp: new Date(),
-        isCommand: false
-      })
-      
+        isCommand: conversationResult.actions?.length > 0,
+        actions: conversationResult.actions || [],
+        needsConfirmation: conversationResult.needsConfirmation || false,
+        metadata: conversationResult.metadata,
+      });
     } else {
-      // Not a recognized command, proceed with normal AI processing
-      // Get conversation context with enhanced task/event context
-      let contextMessages = await aiService.getConversationContext(
-        messages.value, 
-        10, 
-        authStore.user?.id
-      )
-      
-      // Send to AI service
-      const aiResponse = await aiService.sendMessage(
-        contextMessages,
-        {
-          model: selectedModel.value,
-          temperature: 0.7,
-          maxTokens: 2048,
-          userId: authStore.user?.id,
-          conversationId: currentConversationId.value
-        }
-      )
-      
-      if (aiResponse.success) {
-        assistantContent = aiResponse.content
-      } else {
-        assistantContent = 'I apologize, but I encountered an error processing your request. Please try again.'
-        isError = true
-      }
-      
+      assistantContent =
+        conversationResult.response ||
+        "I apologize, but I encountered an error processing your request. Please try again.";
+      isError = true;
+
       assistantMessage = new Message({
-        role: 'assistant',
+        role: "assistant",
         content: assistantContent,
         timestamp: new Date(),
-        model: selectedModel.value,
-        isError
-      })
+        isError,
+      });
     }
-    
-    messages.value.push(assistantMessage)
-    
+
+    messages.value.push(assistantMessage);
+
     // Save assistant message to conversation
     if (currentConversationId.value) {
-      await conversationService.addMessage(currentConversationId.value, assistantMessage)
-      
+      await conversationService.addMessage(
+        currentConversationId.value,
+        assistantMessage
+      );
+
       // Update conversation title if this is the first exchange
       if (messages.value.length <= 2 && !conversationTitle.value) {
-        const titleResult = await conversationService.update(currentConversationId.value, {
-          title: userMessage.substring(0, 50) + (userMessage.length > 50 ? '...' : '')
-        })
+        const titleResult = await conversationService.update(
+          currentConversationId.value,
+          {
+            title:
+              userMessage.substring(0, 50) +
+              (userMessage.length > 50 ? "..." : ""),
+          }
+        );
         if (titleResult.success) {
-          conversationTitle.value = titleResult.data.title
+          conversationTitle.value = titleResult.data.title;
         }
       }
     }
-    
+
     // Scroll to bottom
-    nextTick(() => scrollToBottom())
-    
+    nextTick(() => scrollToBottom());
   } catch (error) {
-    console.error('Error sending message:', error)
-    
+    console.error("Error sending message:", error);
+
     // Add error message
     const errorMessage = new Message({
-      role: 'assistant',
-      content: 'I apologize, but I encountered an error processing your request. Please try again.',
+      role: "assistant",
+      content:
+        "I apologize, but I encountered an error processing your request. Please try again.",
       timestamp: new Date(),
-      isError: true
-    })
-    
-    messages.value.push(errorMessage)
-    
+      isError: true,
+    });
+
+    messages.value.push(errorMessage);
+
     $q.notify({
-      type: 'negative',
-      message: 'Failed to process your request'
-    })
+      type: "negative",
+      message: "Failed to process your request",
+    });
   } finally {
-    isTyping.value = false
+    isTyping.value = false;
   }
 }
 
@@ -464,14 +504,14 @@ async function sendMessage() {
  * Handle keyboard input in textarea
  */
 function handleKeyDown(event) {
-  if (event.key === 'Enter') {
+  if (event.key === "Enter") {
     if (event.shiftKey) {
       // Shift+Enter: allow new line (default behavior)
-      return
+      return;
     } else {
       // Enter alone: send message
-      event.preventDefault()
-      sendMessage()
+      event.preventDefault();
+      sendMessage();
     }
   }
 }
@@ -480,32 +520,32 @@ function handleKeyDown(event) {
  * Get appropriate icon for message
  */
 function getMessageIcon(message) {
-  if (message.role === 'user') {
-    return 'person'
+  if (message.role === "user") {
+    return "person";
   } else if (message.isWelcome) {
-    return 'waving_hand'
+    return "waving_hand";
   } else if (message.isCommand) {
-    return 'terminal'
+    return "terminal";
   } else {
-    return 'smart_toy'
+    return "smart_toy";
   }
 }
 function formatMessageContent(content) {
   // Basic markdown-like formatting
   return content
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/\n/g, '<br>')
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.*?)\*/g, "<em>$1</em>")
+    .replace(/\n/g, "<br>");
 }
 
 /**
  * Format timestamp for display
  */
 function formatTime(timestamp) {
-  return new Date(timestamp).toLocaleTimeString([], { 
-    hour: '2-digit', 
-    minute: '2-digit' 
-  })
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 /**
@@ -513,7 +553,7 @@ function formatTime(timestamp) {
  */
 function scrollToBottom() {
   if (messagesContainer.value) {
-    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
   }
 }
 
@@ -521,14 +561,14 @@ function scrollToBottom() {
  * Load settings from local storage
  */
 function loadSettings() {
-  const savedApiKey = localStorage.getItem('jarvis_ai_api_key')
-  const savedModel = localStorage.getItem('jarvis_ai_model')
-  
+  const savedApiKey = localStorage.getItem("jarvis_ai_api_key");
+  const savedModel = localStorage.getItem("jarvis_ai_model");
+
   if (savedApiKey) {
-    apiKey.value = savedApiKey
+    apiKey.value = savedApiKey;
   }
   if (savedModel) {
-    selectedModel.value = savedModel
+    selectedModel.value = savedModel;
   }
 }
 
@@ -537,19 +577,19 @@ function loadSettings() {
  */
 function saveSettings() {
   if (apiKey.value) {
-    localStorage.setItem('jarvis_ai_api_key', apiKey.value)
+    localStorage.setItem("jarvis_ai_api_key", apiKey.value);
     // Update AI service with new API key
-    aiService.apiKey = apiKey.value
+    aiService.apiKey = apiKey.value;
   }
-  
-  localStorage.setItem('jarvis_ai_model', selectedModel.value)
-  
-  showSettings.value = false
-  
+
+  localStorage.setItem("jarvis_ai_model", selectedModel.value);
+
+  showSettings.value = false;
+
   $q.notify({
-    type: 'positive',
-    message: 'Settings saved successfully'
-  })
+    type: "positive",
+    message: "Settings saved successfully",
+  });
 }
 
 /**
@@ -557,46 +597,65 @@ function saveSettings() {
  */
 async function acceptAction(action, message) {
   try {
-    isTyping.value = true
-    
+    isTyping.value = true;
+
     // Execute the action
-    const results = await chatCommandService.executeActions([action], authStore.user?.id)
-    
+    const results = await aiService.executeActions(
+      [action],
+      authStore.user?.id
+    );
+
     // Update the message to show action was accepted
-    const actionIndex = message.actions.findIndex(a => a === action)
+    const actionIndex = message.actions.findIndex((a) => a === action);
     if (actionIndex !== -1) {
-      message.actions[actionIndex].status = 'accepted'
+      message.actions[actionIndex].status = "accepted";
     }
-    
+
     // Add result message
-    const result = results[0]
+    const result = results[0];
+    let content = "";
+
+    if (result.success) {
+      if (action.type === "CREATE_TASK") {
+        content = `✅ Task created successfully: "${
+          action.params?.title || "New Task"
+        }"`;
+      } else if (action.type === "CREATE_EVENT") {
+        content = `✅ Event created successfully: "${
+          action.params?.title || "New Event"
+        }"`;
+      } else {
+        content = `✅ Action completed successfully`;
+      }
+    } else {
+      content = `❌ Action failed: ${result.error || "Unknown error"}`;
+    }
+
     const resultMessage = new Message({
-      role: 'assistant',
-      content: result.success ? 
-        `✅ Action completed successfully` : 
-        `❌ Action failed: ${result.result?.error || 'Unknown error'}`,
+      role: "assistant",
+      content,
       timestamp: new Date(),
-      isCommand: true
-    })
-    
-    messages.value.push(resultMessage)
-    
+      isCommand: true,
+    });
+
+    messages.value.push(resultMessage);
+
     if (result.success) {
       $q.notify({
-        type: 'positive',
-        message: 'Action completed successfully'
-      })
+        type: "positive",
+        message: "Action completed successfully",
+      });
     }
-    
-    nextTick(() => scrollToBottom())
+
+    nextTick(() => scrollToBottom());
   } catch (error) {
-    console.error('Error executing action:', error)
+    console.error("Error executing action:", error);
     $q.notify({
-      type: 'negative',
-      message: 'Failed to execute action'
-    })
+      type: "negative",
+      message: "Failed to execute action",
+    });
   } finally {
-    isTyping.value = false
+    isTyping.value = false;
   }
 }
 
@@ -605,15 +664,15 @@ async function acceptAction(action, message) {
  */
 async function rejectAction(action, message) {
   // Update the message to show action was rejected
-  const actionIndex = message.actions.findIndex(a => a === action)
+  const actionIndex = message.actions.findIndex((a) => a === action);
   if (actionIndex !== -1) {
-    message.actions[actionIndex].status = 'rejected'
+    message.actions[actionIndex].status = "rejected";
   }
-  
+
   $q.notify({
-    type: 'info',
-    message: 'Action rejected'
-  })
+    type: "info",
+    message: "Action rejected",
+  });
 }
 
 /**
@@ -621,51 +680,54 @@ async function rejectAction(action, message) {
  */
 async function acceptAllActions(message) {
   try {
-    isTyping.value = true
-    
+    isTyping.value = true;
+
     // Filter out already processed actions
-    const pendingActions = message.actions.filter(a => !a.status)
-    
-    if (pendingActions.length === 0) return
-    
+    const pendingActions = message.actions.filter((a) => !a.status);
+
+    if (pendingActions.length === 0) return;
+
     // Execute all actions
-    const results = await chatCommandService.executeActions(pendingActions, authStore.user?.id)
-    
+    const results = await aiService.executeActions(
+      pendingActions,
+      authStore.user?.id
+    );
+
     // Update action statuses
-    pendingActions.forEach(action => {
-      const actionIndex = message.actions.findIndex(a => a === action)
+    pendingActions.forEach((action) => {
+      const actionIndex = message.actions.findIndex((a) => a === action);
       if (actionIndex !== -1) {
-        message.actions[actionIndex].status = 'accepted'
+        message.actions[actionIndex].status = "accepted";
       }
-    })
-    
+    });
+
     // Add result message
-    const successCount = results.filter(r => r.success).length
-    const totalCount = results.length
-    
+    const successCount = results.filter((r) => r.success).length;
+    const totalCount = results.length;
+
     const resultMessage = new Message({
-      role: 'assistant',
+      role: "assistant",
       content: `✅ Completed ${successCount} of ${totalCount} actions`,
       timestamp: new Date(),
-      isCommand: true
-    })
-    
-    messages.value.push(resultMessage)
-    
+      isCommand: true,
+    });
+
+    messages.value.push(resultMessage);
+
     $q.notify({
-      type: 'positive',
-      message: `Completed ${successCount} of ${totalCount} actions`
-    })
-    
-    nextTick(() => scrollToBottom())
+      type: "positive",
+      message: `Completed ${successCount} of ${totalCount} actions`,
+    });
+
+    nextTick(() => scrollToBottom());
   } catch (error) {
-    console.error('Error executing actions:', error)
+    console.error("Error executing actions:", error);
     $q.notify({
-      type: 'negative',
-      message: 'Failed to execute actions'
-    })
+      type: "negative",
+      message: "Failed to execute actions",
+    });
   } finally {
-    isTyping.value = false
+    isTyping.value = false;
   }
 }
 
@@ -674,22 +736,22 @@ async function acceptAllActions(message) {
  */
 async function rejectAllActions(message) {
   // Update all action statuses
-  message.actions.forEach(action => {
+  message.actions.forEach((action) => {
     if (!action.status) {
-      action.status = 'rejected'
+      action.status = "rejected";
     }
-  })
-  
+  });
+
   $q.notify({
-    type: 'info',
-    message: 'All actions rejected'
-  })
+    type: "info",
+    message: "All actions rejected",
+  });
 }
 </script>
 
 <style lang="scss" scoped>
 .chat-page {
-  height: 100vh;
+  height: calc(100vh - 56px); // Adjust for header height
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -723,7 +785,7 @@ async function rejectAllActions(message) {
 .message-wrapper {
   display: flex;
   margin-bottom: 16px;
-  
+
   &:last-child {
     margin-bottom: 0;
   }
@@ -733,18 +795,18 @@ async function rejectAllActions(message) {
   display: flex;
   align-items: flex-start;
   max-width: 80%;
-  
+
   &.message-user {
     margin-left: auto;
     flex-direction: row-reverse;
-    
+
     .message-content {
       margin-right: 12px;
       background: var(--q-accent);
       color: white;
     }
   }
-  
+
   &.message-assistant {
     .message-content {
       margin-left: 12px;
@@ -752,21 +814,21 @@ async function rejectAllActions(message) {
       border: 1px solid #e0e0e0;
     }
   }
-  
+
   &.message-error {
     .message-content {
       background: #ffebee;
       border-color: #f44336;
     }
   }
-  
+
   &.message-command {
     .message-content {
       background: #f3e5f5;
       border-color: #9c27b0;
     }
   }
-  
+
   &.message-welcome {
     .message-content {
       background: #e8f5e8;
@@ -804,7 +866,7 @@ async function rejectAllActions(message) {
   display: flex;
   align-items: center;
   padding: 8px 0;
-  
+
   span {
     height: 8px;
     width: 8px;
@@ -813,11 +875,11 @@ async function rejectAllActions(message) {
     display: inline-block;
     margin-right: 4px;
     animation: typing 1.4s infinite ease-in-out;
-    
+
     &:nth-child(2) {
       animation-delay: 0.2s;
     }
-    
+
     &:nth-child(3) {
       animation-delay: 0.4s;
       margin-right: 0;
@@ -826,7 +888,9 @@ async function rejectAllActions(message) {
 }
 
 @keyframes typing {
-  0%, 60%, 100% {
+  0%,
+  60%,
+  100% {
     transform: translateY(0);
     opacity: 0.5;
   }
@@ -841,7 +905,7 @@ async function rejectAllActions(message) {
   .message {
     max-width: 95%;
   }
-  
+
   .message-content {
     padding: 10px 14px;
     font-size: 14px;
